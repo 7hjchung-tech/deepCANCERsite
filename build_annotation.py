@@ -51,32 +51,49 @@ ATPASE_START, ATPASE_END = 85, 350
 #   ATPase     : 85  .. 350
 #   C-terminal : 351 .. 376
 
-# Motif / interface ranges. Each value is a LIST of (start, end) tuples so a
-# feature can occupy several disconnected stretches. Empty list -> column is
-# all zeros (we don't have the data yet).
-#
-# PROVENANCE of every range (so a reviewer can check it):
-MOTIF_RANGES = {
-    # PROSITE P-loop pattern [AG]-x(4)-G-K-[ST] matched the sequence as
-    # 'GAPGVGKT' at residues 125-132, with the catalytic Lysine (K131) inside.
-    "walker_a":        [(125, 132)],
+# Motif / interface features as explicit RESIDUE-POSITION lists (1-based).
+# Sources below. All interface/binding residues are transcribed from
+# Olvera-Leon et al. Cell 2024, Data S2 (mmc4.pdf) and were VERIFIED 1:1 against
+# the WT sequence (the residue letter the paper gives matches our seq position).
+MOTIF_POSITIONS = {
+    # Walker A critical residues per Data S2 Fig 4A: G125, G130, K131, T132
+    # ("no amino acid change is tolerated, except for G125"). (The full PROSITE
+    # P-loop motif is 125-132 'GAPGVGKT'; we keep only the critical residues.)
+    "walker_a": [125, 130, 131, 132],
 
-    # Walker B has no annotated feature in UniProt for RAD51C -> leave empty.
-    "walker_b":        [],
+    # Walker B critical residue per Data S2 Fig 4A: D242 (catalytic Asp).
+    # Independently confirmed by alignment to human RAD51 (Q06609) -> D222.
+    "walker_b": [242],
 
-    # UniProt O43502 "Binding site" feature, 125-132 = the ATP/P-loop contact.
-    # (It overlaps Walker A on purpose — that's biologically correct.)
-    "atp_contact":     [(125, 132)],
+    # ATP binding surface = union of the two ATP interfaces in Data S2 Fig 4A/4B:
+    #   RAD51B/C (17): G125 P127 G128 V129 G130 K131 T132 Q133 E161 S163 R168
+    #                  D242 G243 T283 Q285 R322 I341
+    #   RAD51C/D (8):  H307 A308 A309 T310 K328 S329 P330 K333
+    "atp_contact": [125, 127, 128, 129, 130, 131, 132, 133, 161, 163, 168,
+                    242, 243, 283, 285, 322, 341,
+                    307, 308, 309, 310, 328, 329, 330, 333],
 
-    # ssDNA binding needs Olvera-Leon Data S2 (not in this repo) -> empty.
-    "ssdna_binding":   [],
+    # ssDNA binding surface (Data S2 Fig 4C, 14 residues): R249 R258 R260 L262
+    # N263 G264 T287 T288 K289 A300 L301 G302 S304 R312.
+    "ssdna_binding": [249, 258, 260, 262, 263, 264, 287, 288, 289,
+                      300, 301, 302, 304, 312],
 
-    # UniProt O43502 "Region" 79-136 = "Interaction with RAD51B, RAD51D and
-    # XRCC3" = the BCDX2-complex interface. Used as a proxy until Data S2.
-    "bcdx2_interface": [(79, 136)],
+    # BCDX2 interface = RAD51C residues contacting RAD51B / RAD51D / XRCC2
+    # (Data S2 Figs 2, 3A/3B, 4): NTD M10 R24 G31 F32 E37; linker->D A87 L88 L90
+    # L91; ATPase pocket for B-linker F164 M165 V166 V169 L205 I208 Y210; ATPase
+    # ->B P127 Q133 G162 S163 A221 Y224 R260 Q285 T287 K342; ATPase->D K119 E303
+    # R260 H307.
+    "bcdx2_interface": [10, 24, 31, 32, 37, 87, 88, 90, 91,
+                        164, 165, 166, 169, 205, 208, 210,
+                        127, 133, 162, 163, 221, 224, 260, 285, 287, 342,
+                        119, 303, 307],
 
-    # XRCC3-specific (CX3) contacts need Data S2 -> empty.
-    "cx3_interface":   [],
+    # CX3 interface = RAD51C residues contacting XRCC3 (Data S2 Figs 2C, 3D, 4):
+    # NTD P43 S44 K54; ATPase pocket for X3-linker F164 V166 V169 L205 I208 Y210;
+    # ATPase Q133 G162 S163 A221 Y224 R249 R260 Q285 R322.
+    "cx3_interface": [43, 44, 54,
+                      164, 166, 169, 205, 208, 210,
+                      133, 162, 163, 221, 224, 249, 260, 285, 322],
 }
 
 # The fixed column order. len must be 10.
@@ -114,14 +131,13 @@ def load_sequence(cache_path="rad51c_seq.txt"):
 
 
 # --------------------------------------------------------------------------
-# 2. Turn a list of 1-based inclusive ranges into a length-376 binary mask.
-#    Example: ranges_to_mask([(125,132)]) -> array with 1.0 at indices 124..131.
+# 2. Turn a list of 1-based residue positions into a length-376 binary mask.
+#    Example: positions_to_mask([131, 242]) -> 1.0 at indices 130 and 241.
 # --------------------------------------------------------------------------
-def ranges_to_mask(ranges, length=SEQ_LEN):
+def positions_to_mask(positions, length=SEQ_LEN):
     m = np.zeros(length, dtype=np.float32)
-    for start, end in ranges:
-        # 1-based inclusive [start, end]  ->  0-based slice [start-1 : end]
-        m[start - 1:end] = 1.0
+    for p in positions:
+        m[p - 1] = 1.0          # 1-based position -> 0-based index
     return m
 
 
@@ -144,7 +160,7 @@ def coarse_domain_onehot():
 # 4. Assemble the full [376 x 10] table as a DataFrame.
 # --------------------------------------------------------------------------
 def build_residue_annotation():
-    load_sequence()  # runs the sanity checks; we don't need the string here
+    seq = load_sequence()  # also runs the sanity checks
 
     ra = pd.DataFrame({"position": np.arange(1, SEQ_LEN + 1)})
 
@@ -153,8 +169,10 @@ def build_residue_annotation():
     ra["domain_ATPase"] = dom[:, 1]
     ra["domain_Cterm"] = dom[:, 2]
 
-    for col, ranges in MOTIF_RANGES.items():
-        ra[col] = ranges_to_mask(ranges)
+    # Guardrail: every flagged position must be inside the protein (1..376).
+    for col, positions in MOTIF_POSITIONS.items():
+        assert all(1 <= p <= SEQ_LEN for p in positions), f"{col}: position out of range"
+        ra[col] = positions_to_mask(positions)
 
     # conservation: stopgap 0.0 until we have ConSurf/EVE. Do NOT standardize
     # here — standardization happens later, fit on TRAIN positions only.
