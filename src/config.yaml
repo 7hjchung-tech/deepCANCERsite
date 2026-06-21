@@ -1,0 +1,33 @@
+esm:
+  model_name: "esm2_t33_650M_UR50D"
+  repr_layer: 33          # 기본 추출 레이어. 분석 시 list[int] 가능 (예: [0, 33])
+  device: "cpu"           # "cuda" 로 변경 가능
+
+pooling:
+  window_W: 10            # window 반경. sweep 후보: [5, 10, 20]
+  mode: "uniform"         # "uniform" | "exp_decay"
+  tau: 5.0                # exp_decay 전용. τ가 매우 크면 uniform과 수렴
+
+bottleneck:
+  in_dim: 1280
+  out_dim: 256
+
+lora:
+  enabled: false          # true 로 변경하면 ESMEncoder 초기화 시 LoRA 주입
+  rank: 8                 # r. 권장: 4 / 8 / 16
+  alpha: 16.0             # scale = alpha / rank. alpha=rank 이면 scale=1
+  target_layers: null     # null = 전체 33 layer. 예: [30, 31, 32] 로 last-k만 주입
+
+analysis:
+  output_dir: "runs/layer_analysis"
+  output_format: "jsonl"     # "jsonl" | "csv"
+  pooling_W: 10              # window 반경 (pooling.window_W 와 별도로 설정 가능)
+  pooling_mode: "uniform"    # "uniform" | "exp_decay"
+  pooling_tau: 5.0           # exp_decay 전용
+  cov:
+    freeze_at: "pretrained"  # "pretrained" | "per_epoch". 참고: pretrained 고정 시
+                             # epoch 간 Mahalanobis 거리 비교 가능; per_epoch 시
+                             # metric space가 매 epoch 변화해 절대값 비교 불가
+    estimator: "ledoit_wolf"
+    pca_dim: null            # null = 1280-dim 전체; int 설정 시 PCA 축소 후 추정
+    cond_warn_threshold: 1.0e8

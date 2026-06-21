@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(conda info --envs 2>&1)",
+      "PowerShell(head -20)",
+      "PowerShell(Get-Command python3 -ErrorAction SilentlyContinue)",
+      "PowerShell(python -m pip show torch 2>&1)"
+    ]
+  }
+}

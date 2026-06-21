@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Model checkpoints & weights
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.safetensors
+checkpoints/
+weights/
+
+# Data files
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.fasta
+*.fa
+data/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+runs/
+
+# Temporary archive (pending final deletion)
+_archive_removed/
