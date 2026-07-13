@@ -10,7 +10,7 @@ build_dataset.py — split_manifest.csv -> 변이별 25-dim 구조 feature 표
 
 import numpy as np
 import pandas as pd
-from block_b import build_block_a, BlockBEncoder, FULL_COLS, FULL_DIM
+from data.structure.code.block_b import build_block_a, BlockBEncoder, FULL_COLS, FULL_DIM
 
 
 def spearman(a, b):
