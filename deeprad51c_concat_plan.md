@@ -1,5 +1,9 @@
 # DeepRAD51C — Concat 단계 설계 (step by step, high detail)
 
+> ⚠️ **구버전 문서.** 아래 "기준" 코드 중 `structure_code.py`는 삭제되었고, 구조 feature
+> 인코딩은 이제 `data/structure/code/block_b.py` 등으로 대체되었습니다. concat 설계를
+> 다시 진행할 때는 최신 코드 기준으로 이 문서를 갱신하거나 새로 작성하세요.
+
 기준: deepCANCERsite repo 실제 코드 (`dataset.py`, `src/embeddings/*`, `structure_code.py`, `baseline_llr.py`).
 이 문서는 5개 stream을 **하나의 모델 입력으로 합치는(concat)** 단계를 처음부터 끝까지 설계한다.
 

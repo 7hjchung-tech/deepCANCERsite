@@ -5,6 +5,4 @@ exclude =
     .git,
     __pycache__,
     build,
-    dist,
-    experimental
-    third_party
+    dist
