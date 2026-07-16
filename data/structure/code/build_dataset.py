@@ -1,16 +1,18 @@
 """
-build_dataset.py — split_manifest.csv -> 변이별 25-dim 구조 feature 표
+build_dataset.py — split_manifest.csv -> 변이별 22-dim 구조 feature 표
 
-  scope: SAV(missense) + in-frame indel(deletion/insertion). synonymous 제외.
+  scope: SAV(missense) + synonymous + in-frame indel(deletion/insertion).
+         synonymous는 var_type="sav"로 매핑 (WT와 서열 동일 -> Block A는 해당
+         위치의 WT 구조, Block B는 SAV와 동일하게 전부 0).
   파서:  pp -> anchor_pos, slim_consequence -> var_type,
          mut_seq 길이 - 376 -> del_len / ins_len
-  출력:  rad51c_struct_features.csv  (var_id, split, label + 25 feature)
+  출력:  rad51c_struct_features.csv  (var_id, split, label + 22 feature)
          rad51c_X.npy [N,{FULL_DIM}], rad51c_y.npy [N], rad51c_meta.csv
 """
 
 import numpy as np
 import pandas as pd
-from data.structure.code.block_b import build_block_a, BlockBEncoder, FULL_COLS, FULL_DIM
+from block_b import build_block_a, BlockBEncoder, FULL_COLS, FULL_DIM
 
 
 def spearman(a, b):
@@ -22,6 +24,7 @@ def spearman(a, b):
 WT_LEN = 376
 CONS2TYPE = {
     "missense": "sav",
+    "synonymous": "sav",
     "codon_deletion": "del",
     "clinical_inframe_deletion": "del",
     "clinical_inframe_insertion": "ins",
@@ -30,7 +33,7 @@ CONS2TYPE = {
 m = pd.read_csv("split_manifest.csv")
 m["dlen"] = WT_LEN - m["mut_seq"].str.len()          # >0 deletion, <0 insertion
 
-# scope 필터 (synonymous 등 제외)
+# scope 필터 (여전히 stop_gained/frameshift/splice 등은 제외)
 m = m[m["slim_consequence"].isin(CONS2TYPE)].copy().reset_index(drop=True)
 m["var_type"] = m["slim_consequence"].map(CONS2TYPE)
 m["anchor_pos"] = m["pp"].astype(int)

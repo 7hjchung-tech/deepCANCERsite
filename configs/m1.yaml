@@ -1,0 +1,9 @@
+# M1: vanilla (frozen) ESM encoder, Block B used, cached diff_emb.
+extends: base.yaml
+model_id: M1
+
+esm_mode: cached
+use_lora: false
+use_block_b: true
+
+batch_size: 64        # no ESM forward in the training loop -> can go large

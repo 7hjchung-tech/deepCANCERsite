@@ -1,10 +1,10 @@
 """
-block_b.py — RAD51C indel 구조 인코더 (v3: 중복 정리 + span pooling + min2)
+block_b.py — RAD51C indel 구조 인코더 (v4: 타입 one-hot 제거, 22-dim)
 
 설계 전제 (사용자 스킴):
   - Block A = 앵커 한 점의 per-residue 구조 feature (indel=시작 위치, SAV=바뀌는 residue).
   - Block B = indel 전용 "재봉합 사건" 인코더. SAV는 전부 0.
-  - 변이 타입(sav/del/ins)은 최종 3-way one-hot으로만 지정 (Block B 안엔 타입 플래그 없음).
+  - 변이 타입(sav/del/ins) one-hot은 struct feature에서 제거됨 — meta stream이 담당.
 
 v3 변경 (feature 중복 정리):
   - packing_density 제거: rsasa와 residue-level 상관 -0.92로 사실상 중복.
@@ -42,10 +42,9 @@ B_COLS = [
     "del_len_norm", "ins_len_norm",
 ]
 
-# 최종 벡터: Block A 11 + Block B 11 + 타입 one-hot 3 = 25
-FULL_COLS = [f"A_{c}" for c in FEAT_COLS] + [f"B_{c}" for c in B_COLS] \
-            + ["oh_sav", "oh_del", "oh_ins"]
-FULL_DIM = len(FULL_COLS)                                # 25
+# 최종 벡터: Block A 11 + Block B 11 = 22  (변이 타입 one-hot은 meta stream이 담당)
+FULL_COLS = [f"A_{c}" for c in FEAT_COLS] + [f"B_{c}" for c in B_COLS]
+FULL_DIM = len(FULL_COLS)                                # 22
 
 CONTACT_CUTOFF = 10.0                                    # Å, 접촉 판정
 CA_BOND = 3.8                                            # Å, Cα-Cα virtual bond
@@ -230,21 +229,20 @@ class BlockBEncoder:
                                  del_len=r.get("del_len", 0), ins_len=r.get("ins_len", 0))
         return out
 
-    # -- 조립기: Block A(11) + Block B(11) + 타입 one-hot(3) = 25 ---------------
+    # -- 조립기: Block A(11) + Block B(11) = 22 --------------------------------
     def block_a_vec(self, anchor_pos):
         """앵커 한 점의 Block A 11-dim (indel=시작 위치, SAV=바뀌는 residue)."""
         return self.feats[self._row(anchor_pos)]
 
     def encode_full(self, anchor_pos, var_type, del_len=0, ins_len=0):
-        """변이 하나 -> 최종 25-dim (FULL_COLS 순서)."""
+        """변이 하나 -> 최종 22-dim (FULL_COLS 순서)."""
         vt = var_type.lower()
         a = self.block_a_vec(anchor_pos)                                    # 11
         b = self.encode(anchor_pos, vt, del_len=del_len, ins_len=ins_len)   # 11
-        onehot = np.array([vt == "sav", vt == "del", vt == "ins"], dtype=np.float32)  # 3-way
-        return np.concatenate([a, b, onehot]).astype(np.float32)
+        return np.concatenate([a, b]).astype(np.float32)
 
     def encode_full_table(self, variants):
-        """여러 변이 -> [M, 25] 행렬."""
+        """여러 변이 -> [M, 22] 행렬."""
         if isinstance(variants, pd.DataFrame):
             variants = variants.to_dict("records")
         out = np.zeros((len(variants), FULL_DIM), dtype=np.float32)
@@ -279,5 +277,5 @@ if __name__ == "__main__":
               f"{w[iB['span_frac_ss']]:>8.2f}")
 
     full = enc.encode_full(258, "sav")
-    print(f"\nsav @258:  Block B 전부 0={np.allclose(full[11:22], 0)}  one-hot={full[22:25]} (기대 [1,0,0])")
+    print(f"\nsav @258:  Block B 전부 0={np.allclose(full[11:22], 0)}")
     print(f"Block B DIM = {enc.DIM}  |  FULL_DIM = {FULL_DIM}")

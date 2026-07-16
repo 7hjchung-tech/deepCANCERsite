@@ -1,0 +1,36 @@
+# Common settings shared by M1-M4. Each model config sets `extends: base.yaml`
+# and overrides only what differs (esm_mode, use_lora, use_block_b, batch/precision).
+
+esm:
+  model_name: "esm2_t33_650M_UR50D"
+  repr_layer: 33
+  device: "cpu"          # M3/M4 override to "cuda"
+
+pooling:
+  window_W: 10
+  mode: "uniform"
+  tau: 5.0
+
+bottleneck:
+  in_dim: 1280
+  out_dim: 256
+
+mag_hidden_dim: 16
+
+lora:
+  enabled: false         # M3/M4 override to true
+  rank: 8
+  alpha: 16.0
+  target_layers: null    # null = all 33 layers
+
+# residual backbone (shared architecture across all 4 models)
+hidden_dim: 256
+ffn_dim: 1024
+n_blocks: 3
+dropout: 0.2
+
+seed: [42, 43, 44]        # 3 seeds per model
+
+use_lora: false
+use_block_b: true
+esm_mode: cached

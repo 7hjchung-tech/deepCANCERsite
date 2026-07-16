@@ -77,17 +77,17 @@ class ESMEncoder:
         self.alphabet = alphabet
         self.batch_converter = alphabet.get_batch_converter()
 
-    @torch.no_grad()
-    def encode(
+    def _forward(
         self,
         sequences: list[str],
-        repr_layers: Union[int, list[int], None] = None,
+        repr_layers: Union[int, list[int], None],
     ) -> dict[int, torch.Tensor]:
-        """Tokenise and forward-pass sequences through frozen ESM-2.
+        """Shared tokenise + forward-pass logic behind encode()/encode_grad().
 
         Args:
-            sequences: Protein sequences (equal-length). Index 0 → WT,
-                       index 1 → MUT in the typical two-sequence call.
+            sequences: Protein sequences, all the SAME length in one call
+                       (equal-length is required for the [BOS,res_0..res_{L-1},EOS]
+                       slicing below to apply uniformly across the batch).
             repr_layers: Layer indices to extract.
                          0  = token embedding (before first transformer layer)
                          1-33 = transformer layer outputs
@@ -118,6 +118,33 @@ class ESMEncoder:
             layer: result["representations"][layer][:, 1 : L + 1, :]
             for layer in layers
         }
+
+    @torch.no_grad()
+    def encode(
+        self,
+        sequences: list[str],
+        repr_layers: Union[int, list[int], None] = None,
+    ) -> dict[int, torch.Tensor]:
+        """Tokenise and forward-pass sequences through frozen ESM-2 (inference).
+
+        Index 0 → WT, index 1 → MUT in the typical two-sequence call.
+        See _forward() for the full argument/return contract.
+        """
+        return self._forward(sequences, repr_layers)
+
+    def encode_grad(
+        self,
+        sequences: list[str],
+        repr_layers: Union[int, list[int], None] = None,
+    ) -> dict[int, torch.Tensor]:
+        """Like encode(), but WITHOUT @torch.no_grad().
+
+        Required for the LoRA end-to-end path: gradients must flow back
+        through this forward pass into lora_A/lora_B. The base ESM-2 weights
+        stay frozen (requires_grad=False, set in __init__) regardless of
+        which of encode()/encode_grad() is used to run them.
+        """
+        return self._forward(sequences, repr_layers)
 
 
 if __name__ == "__main__":

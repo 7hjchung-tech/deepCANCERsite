@@ -1,0 +1,29 @@
+# M4: LoRA fine-tuned ESM encoder, Block B NOT used, end-to-end diff_emb.
+extends: base.yaml
+model_id: M4
+
+esm_mode: e2e
+use_lora: true
+use_block_b: false
+
+esm:
+  model_name: "esm2_t33_650M_UR50D"
+  repr_layer: 33
+  device: "cuda"
+
+lora:
+  enabled: true
+  rank: 8
+  alpha: 16.0
+  target_layers: null    # all 33 layers, q_proj + v_proj
+
+# RTX 3090 24GB training settings
+precision: fp16
+batch_size: 8
+gradient_accumulation: 4
+gradient_checkpointing: true
+
+# separate LR per param group: head (bottleneck/mag_mlp/backbone/reg_head) vs LoRA
+lr:
+  head: 1.0e-4
+  lora: 1.0e-5

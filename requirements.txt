@@ -6,3 +6,7 @@ transformers
 scipy
 scikit-learn
 requests
+
+# data/structure/code/ (struct feature pipeline) — no prebuilt wheel for very
+# new Python versions (needs the biotraj dependency's compiled extension)
+biotite
