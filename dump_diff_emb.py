@@ -20,6 +20,11 @@ HOW TO RUN
 ----------
     python dump_diff_emb.py                   # full 5,887-variant dump
     python dump_diff_emb.py --limit 8 --out data/diff_emb_raw_smoketest.pt
+    python dump_diff_emb.py --device cuda --batch-size 32     # GPU box
+
+The cache is always saved as CPU tensors regardless of --device, so a dump
+produced on a GPU node loads unchanged on a CPU-only machine (DiffEmbedder's
+cached path calls torch.load without map_location).
 """
 
 from __future__ import annotations
@@ -53,9 +58,16 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None,
                      help="only process the first N rows (smoke test)")
+    ap.add_argument("--device", default=None,
+                     help="cuda | cpu. Overrides src/config.yaml's esm.device. "
+                          "Default: cuda when available, else cpu.")
     args = ap.parse_args()
 
     cfg = _load_config()
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    cfg["esm"]["device"] = device
+    print(f"[dump_diff_emb] device={device}")
+
     wt_seq = Path(args.wt_seq).read_text().strip()
 
     m = pd.read_csv(args.manifest)
@@ -88,7 +100,8 @@ def main() -> None:
             for i, r in enumerate(group):
                 p = int(r["pp"]) - 1     # 1-based pp -> 0-based residue index
                 res = compute_diff_and_mag(H_wt, H_mut[i], p, pooling_cfg)
-                out[r["var_id"]] = {"diff": res["diff"], "mag": res["mag"]}
+                # .cpu() so the cache file is device-independent (see module docstring)
+                out[r["var_id"]] = {"diff": res["diff"].cpu(), "mag": res["mag"].cpu()}
 
         done = min(start + args.batch_size, len(rows))
         print(f"[dump_diff_emb] {done}/{len(rows)} done", end="\r")
