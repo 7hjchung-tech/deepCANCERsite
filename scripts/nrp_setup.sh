@@ -33,15 +33,49 @@ else
 fi
 
 echo
-echo "=== [1/5] venv (--system-site-packages) ==========================="
-if [ ! -d "$VENV" ]; then
-    python3 -m venv --system-site-packages "$VENV"
-    echo "created $VENV"
+echo "=== [1/5] python environment ======================================"
+# Preferred: a venv with --system-site-packages, so the image's CUDA torch is
+# reused instead of downloading a multi-GB wheel. Some NRP images ship without
+# python3-venv (ensurepip missing), so fall back rather than dying: apt-get it
+# if sudo works, otherwise use the system interpreter with `pip install --user`
+# (packages land in ~/.local, which is on the persistent volume either way).
+PY=""
+PIP_USER=""
+if [ -x "$VENV/bin/python" ]; then
+    PY="$VENV/bin/python"
+    echo "reusing existing venv: $VENV"
+elif python3 -m venv --system-site-packages "$VENV" 2>/dev/null; then
+    PY="$VENV/bin/python"
+    echo "created venv: $VENV"
 else
-    echo "$VENV already exists — reusing"
+    rm -rf "$VENV"
+    echo "python3 -m venv is unavailable in this image (ensurepip missing)."
+    if sudo -n true 2>/dev/null; then
+        echo "trying: sudo apt-get install -y python3-venv"
+        if sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv \
+            && python3 -m venv --system-site-packages "$VENV" 2>/dev/null; then
+            PY="$VENV/bin/python"
+            echo "created venv: $VENV"
+        else
+            rm -rf "$VENV"
+        fi
+    fi
 fi
-PY="$VENV/bin/python"
-"$PY" -m pip install --quiet --upgrade pip
+
+if [ -z "$PY" ]; then
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        echo "ERROR: neither venv nor pip is usable in this image."
+        echo "       Ask in the Nautilus Support channel, or pick a different"
+        echo "       Coder template (Cuda/Pytorch rather than TensorFlow)."
+        exit 1
+    fi
+    PY="python3"
+    PIP_USER="--user"
+    echo "no venv — using the system interpreter with 'pip install --user'"
+    echo "(installs go to ~/.local, which persists across workspace restarts)"
+fi
+# shellcheck disable=SC2086
+"$PY" -m pip install --quiet --upgrade pip $PIP_USER 2>/dev/null || true
 
 echo
 echo "=== [2/5] torch ==================================================="
@@ -49,7 +83,8 @@ if "$PY" -c "import torch" 2>/dev/null; then
     echo "torch     : $("$PY" -c 'import torch; print(torch.__version__)') (from image, not reinstalling)"
 else
     echo "torch not in image — installing CUDA 12.1 build (~2.5 GB download)"
-    "$PY" -m pip install torch --index-url https://download.pytorch.org/whl/cu121
+    # shellcheck disable=SC2086
+    "$PY" -m pip install $PIP_USER torch --index-url https://download.pytorch.org/whl/cu121
 fi
 
 echo
@@ -65,7 +100,8 @@ for i in "${!WANT[@]}"; do
 done
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo "installing: ${MISSING[*]}"
-    "$PY" -m pip install "${MISSING[@]}"
+    # shellcheck disable=SC2086
+    "$PY" -m pip install $PIP_USER "${MISSING[@]}"
 else
     echo "numpy / pandas / pyyaml / scikit-learn / pytest already present"
 fi
@@ -103,7 +139,11 @@ print(f"ESM forward OK on {dev}: {tuple(h.shape)}  (expect (1, 10, 1280))")
 PYCODE
 
 echo
-echo "Setup complete. Activate with:  source .venv/bin/activate"
+if [ "$PY" = "python3" ]; then
+    echo "Setup complete. No venv to activate — just use 'python3'."
+else
+    echo "Setup complete. Activate with:  source .venv/bin/activate"
+fi
 echo "Next:"
 echo "  python build_meta_x.py"
 echo "  python dump_diff_emb.py --device cuda --batch-size 32"

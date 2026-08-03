@@ -193,5 +193,7 @@ python -m pytest tests/ -q
 | `nvidia-smi` 없음 | 워크스페이스 파라미터에서 GPU가 0. Stop → 파라미터 수정 → Start |
 | 체크포인트 다운로드 중 `No space left on device` | §2 볼륨 증설 |
 | M3/M4에서 CUDA OOM | GPU Type을 24GB급으로 지정, 또는 `configs/m3.yaml`의 `batch_size` 축소 |
+| `ensurepip is not available` | 이미지에 python3-venv가 없는 경우. 최신 `scripts/nrp_setup.sh`가 자동으로 `pip install --user` 방식으로 넘어갑니다 (`git pull` 후 재실행) |
+| GTX 1080 Ti(11GB)가 배정됨 | dump와 M1/M2 학습에는 충분. M3/M4는 `--batch-size 2` 정도로 낮추세요. Pascal 세대라 fp16을 켜도 속도 이득은 거의 없습니다 |
 | 다음날 접속하니 워크스페이스가 꺼져 있음 | 24시간 무활동 자동 종료. 다시 Start하면 파일은 그대로 |
 | `ModuleNotFoundError: yaml` | `source .venv/bin/activate` 안 함 |
