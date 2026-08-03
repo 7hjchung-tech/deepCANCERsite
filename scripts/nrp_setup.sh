@@ -41,23 +41,42 @@ echo "=== [1/5] python environment ======================================"
 # (packages land in ~/.local, which is on the persistent volume either way).
 PY=""
 PIP_USER=""
-if [ -x "$VENV/bin/python" ]; then
+
+# A venv is only usable if it also has a working pip. A failed `python3 -m venv`
+# still leaves bin/python behind, so testing for the interpreter alone would
+# happily "reuse" a broken directory on the next run.
+venv_ok() {
+    [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -m pip --version >/dev/null 2>&1
+}
+
+if venv_ok; then
     PY="$VENV/bin/python"
     echo "reusing existing venv: $VENV"
-elif python3 -m venv --system-site-packages "$VENV" 2>/dev/null; then
-    PY="$VENV/bin/python"
-    echo "created venv: $VENV"
 else
-    rm -rf "$VENV"
-    echo "python3 -m venv is unavailable in this image (ensurepip missing)."
-    if sudo -n true 2>/dev/null; then
-        echo "trying: sudo apt-get install -y python3-venv"
-        if sudo apt-get update -qq && sudo apt-get install -y -qq python3-venv \
-            && python3 -m venv --system-site-packages "$VENV" 2>/dev/null; then
-            PY="$VENV/bin/python"
-            echo "created venv: $VENV"
+    if [ -e "$VENV" ]; then
+        echo "discarding unusable venv at $VENV (no working pip)"
+        rm -rf "$VENV"
+    fi
+    if python3 -m venv --system-site-packages "$VENV" 2>/dev/null && venv_ok; then
+        PY="$VENV/bin/python"
+        echo "created venv: $VENV"
+    else
+        rm -rf "$VENV"
+        echo "python3 -m venv is unavailable in this image (ensurepip missing)."
+        if sudo -n true 2>/dev/null; then
+            echo "trying: sudo apt-get install -y python3-venv"
+            if sudo apt-get update -qq \
+                && sudo apt-get install -y -qq "python3.$(python3 -c 'import sys; print(sys.version_info[1])')-venv" \
+                && python3 -m venv --system-site-packages "$VENV" 2>/dev/null \
+                && venv_ok; then
+                PY="$VENV/bin/python"
+                echo "created venv: $VENV"
+            else
+                rm -rf "$VENV"
+                echo "apt-get route did not work either"
+            fi
         else
-            rm -rf "$VENV"
+            echo "passwordless sudo not available — skipping the apt-get route"
         fi
     fi
 fi
