@@ -474,6 +474,14 @@ def main() -> None:
                          "when you lower --batch-size to fit a smaller GPU: what has to "
                          "match across compared runs is batch_size x accum.")
     ap.add_argument("--device", default=None, help="cuda | cpu (default: auto)")
+    # Capacity overrides for sweeping without editing base.yaml. They are part
+    # of the settings record, so analyze_runs.py still catches a model swept to
+    # a different capacity than the one it is compared against.
+    ap.add_argument("--hidden-dim", type=int, default=None)
+    ap.add_argument("--ffn-dim", type=int, default=None)
+    ap.add_argument("--n-blocks", type=int, default=None)
+    ap.add_argument("--dropout", type=float, default=None)
+    ap.add_argument("--weight-decay", type=float, default=None)
     ap.add_argument("--no-standardize", action="store_true",
                     help="skip train-only standardisation of struct features")
     args = ap.parse_args()
@@ -482,6 +490,17 @@ def main() -> None:
         args.device = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg = load_model_config(args.config)
+    overrides = {
+        "hidden_dim": args.hidden_dim, "ffn_dim": args.ffn_dim,
+        "n_blocks": args.n_blocks, "dropout": args.dropout,
+        "weight_decay": args.weight_decay,
+    }
+    applied = {k: v for k, v in overrides.items() if v is not None}
+    if applied:
+        cfg = {**cfg, **applied}
+        print(f"[cfg] overridden: {applied}  (use the SAME overrides for every "
+              f"model you compare)")
+
     model_id = cfg.get("model_id", Path(args.config).stem.upper())
     print(f"=== {model_id}  ({args.config})  device={args.device} ===")
     print(f"    esm_mode={cfg['esm_mode']}  use_lora={cfg['use_lora']}  "
