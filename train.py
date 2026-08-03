@@ -152,13 +152,20 @@ def load_data() -> dict:
     }
     wt_seq = Path(WT_SEQ_PATH).read_text().strip()
 
+    # Variant group per row, for group-wise metrics. missense vs synonymous
+    # only exists in the manifest's slim_consequence (rad51c_meta.csv collapses
+    # both into var_type="sav"), so take it from there.
+    cons = manifest["slim_consequence"].to_numpy()
+    group = np.where(cons == "missense", "missense",
+                     np.where(cons == "synonymous", "synonymous", "indel"))
+
     idx = {s: np.flatnonzero(split == s) for s in ("train", "val", "test")}
     print(f"[data] {len(manifest)} variants  "
           f"train={len(idx['train'])} val={len(idx['val'])} test={len(idx['test'])}")
     print(f"[data] struct {struct_x.shape}  meta {meta_x.shape}")
 
     return {
-        "struct_x": struct_x, "meta_x": meta_x, "y": y,
+        "struct_x": struct_x, "meta_x": meta_x, "y": y, "group": group,
         "var_ids": var_ids, "idx": idx,
         "manifest": manifest_lookup, "wt_seq": wt_seq,
     }
@@ -231,6 +238,23 @@ def evaluate(model, data, rows, batch_size, device, y_mean, y_std) -> tuple[dict
     m = compute_metrics(data["y"][rows], preds)
     # MSE in the standardised space the loss was computed in: RMSE_std = RMSE/y_std.
     m["loss"] = float((m["rmse"] / y_std) ** 2)
+
+    # Within-group Spearman. Pooled Spearman has a floor of 0.37 from
+    # between-group separation alone; these do not.
+    groups = data["group"][rows]
+    per_group = {}
+    for g in ("missense", "synonymous", "indel"):
+        mask = groups == g
+        if mask.sum() >= 2:
+            per_group[g] = compute_metrics(data["y"][rows][mask], preds[mask])["spearman"]
+    m["by_group"] = per_group
+
+    # Selection target: the mean of the two groups the study is actually about.
+    # synonymous is excluded on purpose -- its diff embedding is exactly zero
+    # for every variant, so its within-group rho is noise around 0 and would
+    # only add variance to model selection.
+    scored = [per_group[g] for g in ("missense", "indel") if g in per_group]
+    m["subset"] = float(np.mean(scored)) if scored else float("nan")
     return m, preds
 
 
@@ -297,21 +321,28 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
     optimizer = torch.optim.AdamW(
         make_param_groups(model, cfg), weight_decay=float(cfg.get("weight_decay", 0.01))
     )
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.HuberLoss(delta=1.0) if args.loss == "huber" else nn.MSELoss()
 
     print(f"[seed {seed}] batch_size={batch_size} accum={accum} "
           f"(effective {effective}) precision={precision} amp={use_amp} "
           f"epochs<={args.epochs} patience={args.patience} select_on={args.select_on}")
 
-    # Epoch selection. The default is val loss, NOT val Spearman: the test
-    # split is 78% missense / 16% synonymous / 6% indel with group means of
-    # -3.5 / -0.2 / -11.2, so a model that only predicts the group mean
-    # already scores rho=0.37 overall. Pooled Spearman is therefore dominated
-    # by between-group separation and barely moves when the within-group
-    # ranking -- the thing the model is actually for -- improves. Val loss has
-    # no such floor. Selecting on a subset's Spearman instead would favour
-    # whichever subset was chosen, which would bias the M1-vs-M2 (indel)
-    # comparison, so it is not the default.
+    # Epoch selection. Neither obvious choice works here:
+    #
+    #   pooled val Spearman -- the split is 78/16/6% missense/synonymous/indel
+    #     with group means -3.5/-0.2/-11.2, so predicting nothing but the group
+    #     mean already scores 0.37. It barely moves when the within-group
+    #     ranking improves, and every seed stopped at epoch 1-4.
+    #   val loss -- z_score reaches -33.6 against a bulk near 0, so a handful of
+    #     extreme variants dominate MSE. Selecting on it measurably COST rank
+    #     quality: missense rho fell 0.589 -> 0.567 versus selecting on pooled
+    #     Spearman, both below the 0.5935 LLR baseline.
+    #
+    # So select on the mean of the within-group Spearman of missense and indel:
+    # aligned with how the models are judged, no between-group floor, and it
+    # weights the two groups the ablation asks about equally instead of letting
+    # missense (78% of rows) decide alone. synonymous is left out because its
+    # diff embedding is identically zero, making its within-group rho noise.
     sign = -1.0 if args.select_on == "loss" else 1.0     # loss: lower is better
     history: list[dict] = []
     best = {"score": -np.inf, "epoch": -1}
@@ -363,10 +394,12 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
         val_m, _ = evaluate(model, data, val_idx, batch_size, device, y_mean, y_std)
         history.append({"epoch": epoch, "train_loss": train_loss, "val": val_m,
                         "seconds": round(time.time() - t0, 1)})
+        bg = val_m["by_group"]
         print(f"[seed {seed}] epoch {epoch:3d}  train_loss={train_loss:.4f}  "
               f"val loss={val_m['loss']:.4f} rho={val_m['spearman']:.4f} "
-              f"r={val_m['pearson']:.4f} rmse={val_m['rmse']:.3f}  "
-              f"({time.time() - t0:.0f}s)")
+              f"| mis={bg.get('missense', float('nan')):.4f} "
+              f"indel={bg.get('indel', float('nan')):.4f} "
+              f"subset={val_m['subset']:.4f}  ({time.time() - t0:.0f}s)")
 
         score = sign * val_m[args.select_on]
         if score > best["score"]:
@@ -386,9 +419,10 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
 
     test_m, test_preds = evaluate(model, data, test_idx, batch_size, device, y_mean, y_std)
     val_m, _ = evaluate(model, data, val_idx, batch_size, device, y_mean, y_std)
-    print(f"[seed {seed}] BEST epoch {best['epoch']}  "
-          f"test rho={test_m['spearman']:.4f} r={test_m['pearson']:.4f} "
-          f"rmse={test_m['rmse']:.3f}")
+    tg = test_m["by_group"]
+    print(f"[seed {seed}] BEST epoch {best['epoch']}  test rho={test_m['spearman']:.4f} "
+          f"| missense={tg.get('missense', float('nan')):.4f} "
+          f"(LLR baseline 0.5935)  indel={tg.get('indel', float('nan')):.4f}")
 
     seed_dir = out_dir / f"seed{seed}"
     seed_dir.mkdir(parents=True, exist_ok=True)
@@ -422,11 +456,15 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--patience", type=int, default=10,
                     help="early stop after N epochs without val improvement")
-    ap.add_argument("--select-on", choices=["loss", "spearman"], default="loss",
-                    help="val metric picking the best epoch. Default 'loss': pooled "
-                         "Spearman is dominated by between-group separation (predicting "
-                         "the group mean alone already scores 0.37) and is a poor "
-                         "selection signal.")
+    ap.add_argument("--select-on", choices=["subset", "loss", "spearman"], default="subset",
+                    help="val metric picking the best epoch. Default 'subset': mean of "
+                         "the within-group Spearman of missense and indel. 'spearman' "
+                         "(pooled) has a 0.37 floor from group separation; 'loss' is "
+                         "dominated by the z_score tail and costs rank quality.")
+    ap.add_argument("--loss", choices=["mse", "huber"], default="mse",
+                    help="training objective on the standardised target. 'huber' caps "
+                         "the influence of the extreme depleted variants (z down to "
+                         "-33.6), which dominate MSE while the metric is rank-based.")
     ap.add_argument("--precision", choices=["fp32", "fp16"], default=None,
                     help="overrides the config. Changes numerics, so use the SAME value "
                          "for every model you intend to compare.")
@@ -477,7 +515,7 @@ def main() -> None:
             "effective_batch": int(args.batch_size or cfg.get("batch_size", 64))
             * int(args.accum or cfg.get("gradient_accumulation", 1)),
             "precision": args.precision or cfg.get("precision", "fp32"),
-            "select_on": args.select_on, "patience": args.patience,
+            "select_on": args.select_on, "loss": args.loss, "patience": args.patience,
             "max_epochs": args.epochs, "seed_list": [int(s) for s in seeds],
             "hidden_dim": cfg.get("hidden_dim"), "ffn_dim": cfg.get("ffn_dim"),
             "n_blocks": cfg.get("n_blocks"), "dropout": cfg.get("dropout"),
