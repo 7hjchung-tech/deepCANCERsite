@@ -272,7 +272,21 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
     y_scaled = (data["y"] - y_mean) / y_std
 
     batch_size = int(args.batch_size or cfg.get("batch_size", 64))
-    accum = int(cfg.get("gradient_accumulation", 1))
+    accum = int(args.accum or cfg.get("gradient_accumulation", 1))
+
+    # Comparability across M1-M4 hinges on the EFFECTIVE batch (batch_size x
+    # accumulation), not on batch_size alone. Halving batch_size to fit a
+    # smaller GPU is free as long as accumulation is raised to match -- there
+    # is no BatchNorm here, only LayerNorm, so accumulation reproduces the
+    # large-batch gradient. Print both so a run's real setting is on the record.
+    cfg_effective = int(cfg.get("batch_size", 64)) * int(cfg.get("gradient_accumulation", 1))
+    effective = batch_size * accum
+    if effective != cfg_effective:
+        print(f"[seed {seed}] WARNING: effective batch {effective} "
+              f"({batch_size}x{accum}) differs from the config's {cfg_effective} "
+              f"({cfg.get('batch_size', 64)}x{cfg.get('gradient_accumulation', 1)}). "
+              f"Runs compared against each other should match -- consider "
+              f"--accum {max(1, cfg_effective // batch_size)}.")
     use_amp = (cfg.get("precision") == "fp16") and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
@@ -281,7 +295,8 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
     )
     loss_fn = nn.MSELoss()
 
-    print(f"[seed {seed}] batch_size={batch_size} accum={accum} amp={use_amp} "
+    print(f"[seed {seed}] batch_size={batch_size} accum={accum} "
+          f"(effective {effective}) amp={use_amp} "
           f"epochs<={args.epochs} patience={args.patience}")
 
     history: list[dict] = []
@@ -387,6 +402,10 @@ def main() -> None:
     ap.add_argument("--patience", type=int, default=10,
                     help="early stop after N epochs without val Spearman improvement")
     ap.add_argument("--batch-size", type=int, default=None, help="overrides the config")
+    ap.add_argument("--accum", type=int, default=None,
+                    help="gradient accumulation steps, overrides the config. Raise this "
+                         "when you lower --batch-size to fit a smaller GPU: what has to "
+                         "match across compared runs is batch_size x accum.")
     ap.add_argument("--device", default=None, help="cuda | cpu (default: auto)")
     ap.add_argument("--no-standardize", action="store_true",
                     help="skip train-only standardisation of struct features")
