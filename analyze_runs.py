@@ -90,12 +90,26 @@ def check_comparable(model_dirs: list[Path]) -> None:
     if len(settings) < 2:
         return
 
-    keys = sorted({k for s in settings.values() for k in s})
+    # Keys that legitimately differ between the cached and end-to-end arms:
+    # lora is off for M1/M2 by definition, cache exists only for M1/M2, and the
+    # seed list is a repetition count rather than a condition (M3/M4 cost hours
+    # a seed). They are reported below instead of being flagged as mismatches.
+    informational = {"lora", "cache", "seed_list"}
+    keys = sorted({k for s in settings.values() for k in s} - informational)
     mismatched = {
         k: {m: s.get(k) for m, s in settings.items()}
         for k in keys
         if len({json.dumps(s.get(k), sort_keys=True) for s in settings.values()}) > 1
     }
+
+    for m, s in settings.items():
+        lora = s.get("lora") or {}
+        tl = lora.get("target_layers")
+        lora_txt = ("off" if not lora.get("enabled") else
+                    f"rank={lora.get('rank')} alpha={lora.get('alpha')} "
+                    f"layers={'all' if tl is None else len(tl)}")
+        print(f"    {m}: seeds={len(s.get('seed_list') or [])}  LoRA {lora_txt}")
+
     # effective_batch is the quantity that must match; batch_size alone may
     # legitimately differ (M3/M4 split it into accumulation steps for memory).
     if not mismatched:
