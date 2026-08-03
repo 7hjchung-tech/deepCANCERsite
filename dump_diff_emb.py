@@ -61,12 +61,29 @@ def main() -> None:
     ap.add_argument("--device", default=None,
                     help="cuda | cpu. Overrides src/config.yaml's esm.device. "
                          "Default: cuda when available, else cpu.")
+    ap.add_argument("--layers", type=int, nargs="+", default=None,
+                    help="sweep mode: extract these repr layers. ESM-2 returns every "
+                         "requested layer from ONE forward pass, so N layers cost the "
+                         "same GPU time as one.")
+    ap.add_argument("--windows", type=int, nargs="+", default=None,
+                    help="sweep mode: pool with these window radii. Pooling is cheap "
+                         "post-processing on hidden states already in memory.")
+    ap.add_argument("--out-dir", default="data/sweep",
+                    help="sweep mode: writes <out-dir>/diff_emb_L<layer>_W<window>.pt")
     args = ap.parse_args()
 
     cfg = _load_config()
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     cfg["esm"]["device"] = device
     print(f"[dump_diff_emb] device={device}")
+
+    sweep = args.layers is not None or args.windows is not None
+    layers = args.layers or [int(cfg["esm"]["repr_layer"])]
+    windows = args.windows or [int(cfg["pooling"]["window_W"])]
+    combos = [(ly, w) for ly in layers for w in windows]
+    if sweep:
+        print(f"[dump_diff_emb] sweep: layers={layers} windows={windows} "
+              f"-> {len(combos)} caches from one pass")
 
     wt_seq = Path(args.wt_seq).read_text().strip()
 
@@ -76,14 +93,12 @@ def main() -> None:
     print(f"[dump_diff_emb] {len(m)} variants to encode")
 
     encoder = ESMEncoder(cfg["esm"])           # frozen, no LoRA
-    layer = int(cfg["esm"]["repr_layer"])
-    pooling_cfg = cfg["pooling"]
 
     # WT forwarded ONCE for the whole run (same sequence for every variant).
     with torch.no_grad():
-        H_wt = encoder.encode([wt_seq], repr_layers=layer)[layer][0]
+        H_wt = {ly: h[0] for ly, h in encoder.encode([wt_seq], repr_layers=layers).items()}
 
-    out: dict[str, dict[str, torch.Tensor]] = {}
+    out: dict[tuple[int, int], dict[str, dict[str, torch.Tensor]]] = {c: {} for c in combos}
     rows = m.to_dict("records")
     for start in range(0, len(rows), args.batch_size):
         batch = rows[start:start + args.batch_size]
@@ -96,20 +111,33 @@ def main() -> None:
         for _, group in by_len.items():
             seqs = [r["mut_seq"] for r in group]
             with torch.no_grad():
-                H_mut = encoder.encode(seqs, repr_layers=layer)[layer]
+                H_mut = encoder.encode(seqs, repr_layers=layers)
             for i, r in enumerate(group):
                 p = int(r["pp"]) - 1     # 1-based pp -> 0-based residue index
-                res = compute_diff_and_mag(H_wt, H_mut[i], p, pooling_cfg)
-                # .cpu() so the cache file is device-independent (see module docstring)
-                out[r["var_id"]] = {"diff": res["diff"].cpu(), "mag": res["mag"].cpu()}
+                for ly, w in combos:
+                    pool_cfg = {**cfg["pooling"], "window_W": w}
+                    res = compute_diff_and_mag(H_wt[ly], H_mut[ly][i], p, pool_cfg)
+                    # .cpu() so the cache is device-independent (see module docstring)
+                    out[(ly, w)][r["var_id"]] = {
+                        "diff": res["diff"].cpu(), "mag": res["mag"].cpu()
+                    }
 
         done = min(start + args.batch_size, len(rows))
         print(f"[dump_diff_emb] {done}/{len(rows)} done", end="\r")
 
     print()
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    torch.save(out, args.out)
-    print(f"[dump_diff_emb] saved {len(out)} entries -> {args.out}")
+    if not sweep:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(out[combos[0]], args.out)
+        print(f"[dump_diff_emb] saved {len(out[combos[0]])} entries -> {args.out}")
+        return
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for (ly, w), d in out.items():
+        path = out_dir / f"diff_emb_L{ly}_W{w}.pt"
+        torch.save(d, path)
+        print(f"[dump_diff_emb] saved {len(d)} entries -> {path}")
 
 
 if __name__ == "__main__":
