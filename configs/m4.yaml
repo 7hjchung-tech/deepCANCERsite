@@ -1,4 +1,6 @@
 # M4: LoRA fine-tuned ESM encoder, Block B NOT used, end-to-end diff_emb.
+# Differs from M3 in use_block_b ONLY, and from M2 in esm_mode/use_lora ONLY.
+# Optimisation settings live in base.yaml on purpose — see the note there.
 extends: base.yaml
 model_id: M4
 
@@ -7,23 +9,12 @@ use_lora: true
 use_block_b: false
 
 esm:
-  model_name: "esm2_t33_650M_UR50D"
-  repr_layer: 33
-  device: "cuda"
+  device: "cuda"         # ESM-2 is in the training loop here (M1/M2 never load it)
 
 lora:
-  enabled: true
-  rank: 8
-  alpha: 16.0
-  target_layers: null    # all 33 layers, q_proj + v_proj
+  enabled: true          # rank/alpha/target_layers inherited from base.yaml
 
-# RTX 3090 24GB training settings
-precision: fp16
+# Memory only: the same effective batch as M1/M2 (32), split because a 650M
+# backward pass does not fit at 32. Do NOT change one of these without the other.
 batch_size: 8
 gradient_accumulation: 4
-gradient_checkpointing: true
-
-# separate LR per param group: head (bottleneck/mag_mlp/backbone/reg_head) vs LoRA
-lr:
-  head: 1.0e-4
-  lora: 1.0e-5

@@ -26,6 +26,7 @@ HOW TO RUN
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -65,6 +66,48 @@ def subsets(df: pd.DataFrame) -> dict[str, np.ndarray]:
 def summarise(values: list[float]) -> str:
     a = np.array(values, dtype=np.float64)
     return f"{a.mean():.4f} +/- {a.std():.4f}"
+
+
+def check_comparable(model_dirs: list[Path]) -> None:
+    """Refuse to present M1-M4 side by side if they were not trained alike.
+
+    The four models are only an ablation while they differ in esm_mode/use_lora
+    and use_block_b and nothing else. train.py records the settings that must
+    match in summary.json; a run left over from an earlier recipe would
+    otherwise be averaged in silently and quietly become a comparison of
+    training setups rather than of features.
+    """
+    settings: dict[str, dict] = {}
+    for d in model_dirs:
+        f = d / "summary.json"
+        if not f.exists():
+            print(f"  {d.name}: no summary.json (run predates the settings record)")
+            continue
+        s = json.loads(f.read_text(encoding="utf-8")).get("settings")
+        if s:
+            settings[d.name] = s
+
+    if len(settings) < 2:
+        return
+
+    keys = sorted({k for s in settings.values() for k in s})
+    mismatched = {
+        k: {m: s.get(k) for m, s in settings.items()}
+        for k in keys
+        if len({json.dumps(s.get(k), sort_keys=True) for s in settings.values()}) > 1
+    }
+    # effective_batch is the quantity that must match; batch_size alone may
+    # legitimately differ (M3/M4 split it into accumulation steps for memory).
+    if not mismatched:
+        print("  training settings identical across models -- comparable\n")
+        return
+
+    print("\n  *** WARNING: these models were NOT trained under the same settings ***")
+    for k, vals in mismatched.items():
+        print(f"    {k}: " + "  ".join(f"{m}={v}" for m, v in vals.items()))
+    print("    Differences below may reflect the training recipe, not the features.")
+    print("    Re-run the odd ones out with matching settings before drawing "
+          "conclusions.\n")
 
 
 def main() -> None:
@@ -119,6 +162,9 @@ def main() -> None:
 
     if not table:
         raise SystemExit("nothing to analyse")
+
+    print("\ncomparability check:")
+    check_comparable([d for d in model_dirs if d.name in table])
 
     print(f"\n{'=' * 78}\nSpearman rho by subset  (mean +/- std over seeds)\n{'=' * 78}")
     names = list(masks)

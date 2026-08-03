@@ -151,7 +151,29 @@ python train.py --config configs/m3.yaml --epochs 10
 ```
 
 기본적으로 config의 seed 3개(42/43/44)를 순서대로 다 돌리고 mean ± std를 냅니다.
-하나만 돌리려면 `--seed 42`.
+하나만 돌리려면 `--seed 42`, 더 많이 돌리려면 `--seeds 42 43 44 45 46`.
+
+> **비교하려는 모델은 전부 같은 설정으로 돌려야 합니다.** M1~M4는 `esm_mode`/`use_lora`와
+> `use_block_b` 두 가지만 달라야 ablation입니다. 그래서 lr·weight_decay·실효 배치·precision·
+> seed는 전부 `configs/base.yaml` 한 곳에 있고, m1~m4.yaml은 건드리지 않습니다.
+> CLI 옵션(`--select-on`, `--precision`, `--batch-size`/`--accum`, `--seeds`)도 네 모델에
+> 똑같이 주세요. `analyze_runs.py`가 `summary.json`을 읽어 설정이 다르면 경고합니다.
+
+### 5-3-1. 결과 분석 (재학습 없이)
+
+```bash
+python analyze_runs.py
+```
+
+`test_predictions.npy`를 읽어 **missense / synonymous / indel 별로** Spearman을 냅니다.
+전체 지표만 보면 안 되는 이유:
+
+- Block B 11개 컬럼은 SAV 5,528행에서 전부 상수 → M1과 M2는 test 882행 중 829행에서
+  입력이 동일합니다. Block B 효과는 indel 53행에만 존재합니다.
+- test의 그룹별 z 평균이 indel −11.2 / missense −3.5 / synonymous −0.2라,
+  **그룹 평균만 내놓는 모델이 이미 전체 ρ = 0.368**을 받습니다.
+- LLR baseline(ρ = 0.5935)은 missense에만 정의되므로, 그걸 넘었는지는 같은 689행에서만
+  물을 수 있습니다.
 
 출력:
 ```

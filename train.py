@@ -228,7 +228,10 @@ def evaluate(model, data, rows, batch_size, device, y_mean, y_std) -> tuple[dict
         out = model(var_ids, struct, meta)
         preds[start:start + len(b)] = out.detach().float().cpu().numpy()
     preds = preds * y_std + y_mean                    # back to z-score units
-    return compute_metrics(data["y"][rows], preds), preds
+    m = compute_metrics(data["y"][rows], preds)
+    # MSE in the standardised space the loss was computed in: RMSE_std = RMSE/y_std.
+    m["loss"] = float((m["rmse"] / y_std) ** 2)
+    return m, preds
 
 
 def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dict:
@@ -287,7 +290,8 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
               f"({cfg.get('batch_size', 64)}x{cfg.get('gradient_accumulation', 1)}). "
               f"Runs compared against each other should match -- consider "
               f"--accum {max(1, cfg_effective // batch_size)}.")
-    use_amp = (cfg.get("precision") == "fp16") and device.type == "cuda"
+    precision = args.precision or cfg.get("precision", "fp32")
+    use_amp = (precision == "fp16") and device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     optimizer = torch.optim.AdamW(
@@ -296,11 +300,21 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
     loss_fn = nn.MSELoss()
 
     print(f"[seed {seed}] batch_size={batch_size} accum={accum} "
-          f"(effective {effective}) amp={use_amp} "
-          f"epochs<={args.epochs} patience={args.patience}")
+          f"(effective {effective}) precision={precision} amp={use_amp} "
+          f"epochs<={args.epochs} patience={args.patience} select_on={args.select_on}")
 
+    # Epoch selection. The default is val loss, NOT val Spearman: the test
+    # split is 78% missense / 16% synonymous / 6% indel with group means of
+    # -3.5 / -0.2 / -11.2, so a model that only predicts the group mean
+    # already scores rho=0.37 overall. Pooled Spearman is therefore dominated
+    # by between-group separation and barely moves when the within-group
+    # ranking -- the thing the model is actually for -- improves. Val loss has
+    # no such floor. Selecting on a subset's Spearman instead would favour
+    # whichever subset was chosen, which would bias the M1-vs-M2 (indel)
+    # comparison, so it is not the default.
+    sign = -1.0 if args.select_on == "loss" else 1.0     # loss: lower is better
     history: list[dict] = []
-    best = {"val_spearman": -np.inf, "epoch": -1}
+    best = {"score": -np.inf, "epoch": -1}
     best_state: dict | None = None
     rng = np.random.default_rng(seed)
 
@@ -349,19 +363,22 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
         val_m, _ = evaluate(model, data, val_idx, batch_size, device, y_mean, y_std)
         history.append({"epoch": epoch, "train_loss": train_loss, "val": val_m,
                         "seconds": round(time.time() - t0, 1)})
-        print(f"[seed {seed}] epoch {epoch:3d}  loss={train_loss:.4f}  "
-              f"val rho={val_m['spearman']:.4f} r={val_m['pearson']:.4f} "
-              f"rmse={val_m['rmse']:.3f}  ({time.time() - t0:.0f}s)")
+        print(f"[seed {seed}] epoch {epoch:3d}  train_loss={train_loss:.4f}  "
+              f"val loss={val_m['loss']:.4f} rho={val_m['spearman']:.4f} "
+              f"r={val_m['pearson']:.4f} rmse={val_m['rmse']:.3f}  "
+              f"({time.time() - t0:.0f}s)")
 
-        if val_m["spearman"] > best["val_spearman"]:
-            best = {"val_spearman": val_m["spearman"], "epoch": epoch, "val": val_m}
+        score = sign * val_m[args.select_on]
+        if score > best["score"]:
+            best = {"score": score, "epoch": epoch, "val": val_m}
             best_state = {
                 k: v.detach().clone()
                 for k, v in model.state_dict().items()
                 if k in {n for n, p in model.named_parameters() if p.requires_grad}
             }
         elif epoch - best["epoch"] >= args.patience:
-            print(f"[seed {seed}] early stop: no val improvement for {args.patience} epochs")
+            print(f"[seed {seed}] early stop: no val {args.select_on} improvement "
+                  f"for {args.patience} epochs")
             break
 
     if best_state is not None:
@@ -378,7 +395,8 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
     torch.save(
         {"trainable_state_dict": best_state,
          "cfg": cfg, "dims": dims, "seed": seed,
-         "best_epoch": best["epoch"],
+         "best_epoch": best["epoch"], "select_on": args.select_on,
+         "effective_batch": effective, "precision": precision,
          "y_mean": y_mean, "y_std": y_std,
          "struct_scaler": data.get("struct_scaler")},
         seed_dir / "best.pt",
@@ -398,9 +416,20 @@ def main() -> None:
     ap.add_argument("--out", default="runs", help="output root directory")
     ap.add_argument("--seed", type=int, default=None,
                     help="run this seed only (default: every seed in the config)")
+    ap.add_argument("--seeds", type=int, nargs="+", default=None,
+                    help="run exactly these seeds, e.g. --seeds 42 43 44 45 46. Use the "
+                         "SAME list for every model you intend to compare.")
     ap.add_argument("--epochs", type=int, default=100)
     ap.add_argument("--patience", type=int, default=10,
-                    help="early stop after N epochs without val Spearman improvement")
+                    help="early stop after N epochs without val improvement")
+    ap.add_argument("--select-on", choices=["loss", "spearman"], default="loss",
+                    help="val metric picking the best epoch. Default 'loss': pooled "
+                         "Spearman is dominated by between-group separation (predicting "
+                         "the group mean alone already scores 0.37) and is a poor "
+                         "selection signal.")
+    ap.add_argument("--precision", choices=["fp32", "fp16"], default=None,
+                    help="overrides the config. Changes numerics, so use the SAME value "
+                         "for every model you intend to compare.")
     ap.add_argument("--batch-size", type=int, default=None, help="overrides the config")
     ap.add_argument("--accum", type=int, default=None,
                     help="gradient accumulation steps, overrides the config. Raise this "
@@ -429,7 +458,9 @@ def main() -> None:
             data["struct_x"], data["idx"]["train"]
         )
 
-    seeds = [args.seed] if args.seed is not None else cfg.get("seed", [42])
+    if args.seed is not None and args.seeds is not None:
+        raise SystemExit("pass --seed or --seeds, not both")
+    seeds = args.seeds or ([args.seed] if args.seed is not None else cfg.get("seed", [42]))
     if isinstance(seeds, int):
         seeds = [seeds]
 
@@ -437,7 +468,21 @@ def main() -> None:
     results = [train_one_seed(cfg, data, int(s), args, out_dir) for s in seeds]
 
     print(f"\n{'=' * 60}\n{model_id} SUMMARY ({len(results)} seed(s))\n{'=' * 60}")
-    summary = {"model_id": model_id, "config": args.config, "seeds": results, "test": {}}
+    # Record the settings that have to match across compared models, so a
+    # stale run in runs/ can be spotted instead of silently averaged in.
+    summary = {
+        "model_id": model_id, "config": args.config, "seeds": results, "test": {},
+        "settings": {
+            "lr": cfg.get("lr"), "weight_decay": cfg.get("weight_decay"),
+            "effective_batch": int(args.batch_size or cfg.get("batch_size", 64))
+            * int(args.accum or cfg.get("gradient_accumulation", 1)),
+            "precision": args.precision or cfg.get("precision", "fp32"),
+            "select_on": args.select_on, "patience": args.patience,
+            "max_epochs": args.epochs, "seed_list": [int(s) for s in seeds],
+            "hidden_dim": cfg.get("hidden_dim"), "ffn_dim": cfg.get("ffn_dim"),
+            "n_blocks": cfg.get("n_blocks"), "dropout": cfg.get("dropout"),
+        },
+    }
     for metric in ("spearman", "pearson", "rmse"):
         vals = np.array([r["test"][metric] for r in results], dtype=np.float64)
         summary["test"][metric] = {"mean": float(vals.mean()), "std": float(vals.std())}

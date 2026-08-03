@@ -29,6 +29,26 @@ ffn_dim: 1024
 n_blocks: 3
 dropout: 0.2
 
+# ---------------------------------------------------------------------------
+# Optimisation — every key below is deliberately here and NOT in m1..m4.yaml.
+# The four models must differ in exactly two things (esm_mode/use_lora and
+# use_block_b); an optimisation setting that lives in a per-model file will
+# drift and turn the ablation into a comparison of training recipes.
+#
+# The one sanctioned exception is memory: M3/M4 split the same EFFECTIVE batch
+# as 8 x 4 accumulation because ESM-2 is in their training loop. batch_size x
+# gradient_accumulation must stay 32 everywhere (train.py warns if it doesn't).
+# ---------------------------------------------------------------------------
+lr:
+  head: 1.0e-4           # was an implicit 1e-3 for M1/M2 while M3/M4 used 1e-4
+  lora: 1.0e-5
+weight_decay: 0.01
+batch_size: 32
+gradient_accumulation: 1
+precision: fp32          # fp16 only changes numerics, so it must not vary
+                         # between models. On a 24GB+ GPU all four fit in fp32;
+                         # if M3/M4 OOM, run ALL FOUR with --precision fp16.
+
 seed: [42, 43, 44]        # 3 seeds per model
 
 use_lora: false
