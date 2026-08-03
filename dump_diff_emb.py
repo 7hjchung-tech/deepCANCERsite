@@ -57,10 +57,10 @@ def main() -> None:
     ap.add_argument("--out", default="data/diff_emb_raw.pt")
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None,
-                     help="only process the first N rows (smoke test)")
+                    help="only process the first N rows (smoke test)")
     ap.add_argument("--device", default=None,
-                     help="cuda | cpu. Overrides src/config.yaml's esm.device. "
-                          "Default: cuda when available, else cpu.")
+                    help="cuda | cpu. Overrides src/config.yaml's esm.device. "
+                         "Default: cuda when available, else cpu.")
     args = ap.parse_args()
 
     cfg = _load_config()

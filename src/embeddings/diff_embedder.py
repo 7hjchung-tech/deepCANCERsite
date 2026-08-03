@@ -85,6 +85,23 @@ class DiffEmbedder(nn.Module):
         return self._forward_e2e(var_ids)
 
     # ------------------------------------------------------------------
+    def cache_to(self, device) -> None:
+        """Move the cached diff/mag tensors onto `device` (mode='cached' only).
+
+        The cache is a plain dict, not a registered buffer, so `.to(device)` on
+        the parent module does NOT move it -- without this the cached path
+        feeds CPU tensors into a CUDA BottleneckMLP and raises a device
+        mismatch. No-op for mode='e2e', where ESMEncoder already owns its
+        device placement.
+        """
+        if self.mode != "cached":
+            return
+        self._cache = {
+            k: {"diff": v["diff"].to(device), "mag": v["mag"].to(device)}
+            for k, v in self._cache.items()
+        }
+
+    # ------------------------------------------------------------------
     def _forward_cached(self, var_ids: list[str]) -> dict[str, Tensor]:
         diffs = torch.stack([self._cache[v]["diff"] for v in var_ids])
         mags = torch.stack([self._cache[v]["mag"] for v in var_ids])

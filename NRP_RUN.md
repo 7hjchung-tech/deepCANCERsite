@@ -102,6 +102,17 @@ pip install -r requirements.txt
 
 ## 5. 실제 실행
 
+### 5-0. meta feature 생성 (몇 초, GPU 불필요)
+
+```bash
+python build_meta_x.py
+```
+
+출력: `data/structure/results/rad51c_meta_X.npy` (N, 3)
+= `[is_missense, is_synonymous, is_indel]` one-hot.
+`del_len`/`ins_len`은 이미 Block B에 있으므로 일부러 넣지 않았습니다
+(넣으면 M1 vs M2 비교가 Block B 효과를 측정하지 못하게 됩니다).
+
 ### 5-1. diff embedding 캐시 생성 (GPU가 실제로 필요한 단계)
 
 M1/M2는 frozen ESM이라 임베딩을 미리 한 번만 계산해두면 됩니다.
@@ -124,36 +135,49 @@ python smoke_test.py
 ```
 
 M1~M4를 실배치 1개씩 forward(+M3/M4는 backward)해서 shape / NaN / concat_dim /
-LoRA gradient 흐름을 검증합니다. ⚠️ 아래 §6의 블로커 때문에 지금은 실패합니다.
+LoRA gradient 흐름을 검증합니다. 5-0과 smoke 캐시(`--limit 8`)가 먼저 있어야 합니다.
 
-### 5-3. 단위 테스트
+### 5-3. 학습
+
+```bash
+# M1: frozen ESM + Block B, 캐시 사용 (CPU로도 몇 분)
+python train.py --config configs/m1.yaml
+
+# M2: Block B 제거 (ablation 짝)
+python train.py --config configs/m2.yaml
+
+# M3/M4: e2e LoRA — GPU 필수, 오래 걸리므로 tmux 안에서
+python train.py --config configs/m3.yaml --epochs 10
+```
+
+기본적으로 config의 seed 3개(42/43/44)를 순서대로 다 돌리고 mean ± std를 냅니다.
+하나만 돌리려면 `--seed 42`.
+
+출력:
+```
+runs/M1/seed42/best.pt              학습 가능한 가중치만 (ESM base 제외)
+runs/M1/seed42/metrics.json         epoch별 기록 + 최종 test 지표
+runs/M1/seed42/test_predictions.npy
+runs/M1/summary.json                seed 3개 mean ± std
+```
+
+주요 동작:
+- **z_score 회귀만** 합니다 (분류 헤드는 아직 없음). 지표는 Spearman ρ / Pearson r / RMSE
+- struct 연속형 컬럼은 **train split으로만** fit한 평균/표준편차로 표준화 (binary·one-hot 제외)
+- 타깃도 train 기준으로 표준화해 학습하지만, **모든 지표는 원래 z-score 단위로 환산**해서 기록
+- val Spearman 기준 early stopping (`--patience`, 기본 10)
+
+### 5-4. 단위 테스트
 
 ```bash
 python -m pytest tests/ -q
 ```
 
----
-
-## 6. 지금 상태에서 막히는 지점 (서버 문제 아님, 코드 쪽 미완성)
-
-1. **`data/structure/results/rad51c_meta_X.npy`가 없습니다.**
-   `smoke_test.py:33`과 `model.py`의 `compute_dims()`가 이 파일을 읽는데,
-   저장소 어디에서도 생성하지 않습니다. `rad51c_meta.csv`(var_type, anchor_pos,
-   del_len, ins_len …)는 있으니, 여기서 meta 6차원(변이 타입 one-hot + 연속값)을
-   만드는 스크립트가 하나 필요합니다. 어떤 컬럼을 어떻게 인코딩할지는 연구 판단이라
-   임의로 정하지 않았습니다.
-
-2. **training loop가 아직 없습니다.** `model.py`는 모델 정의까지고,
-   optimizer / loss / epoch 루프 / 체크포인트 저장 / 평가(Spearman, AUC)는
-   미구현입니다. configs의 `lr.head` / `lr.lora` / `gradient_accumulation` /
-   `precision` 같은 키를 실제로 읽어 쓰는 코드가 없습니다.
-
-즉 지금 서버에서 의미 있게 돌릴 수 있는 건 **5-1 (diff embedding dump)** 와
-**5-3 (pytest)** 입니다. 위 두 개가 채워지면 5-2와 학습이 돌아갑니다.
+51개 전부 통과해야 정상입니다.
 
 ---
 
-## 7. 결과물 가져오기
+## 6. 결과물 가져오기
 
 - 작은 파일: VS Code Explorer에서 드래그 앤 드롭, 또는 git commit & push
 - 큰 파일: Nextcloud (`https://nextcloud.nrp-nautilus.io`) 또는 S3-compatible storage.
@@ -161,7 +185,7 @@ python -m pytest tests/ -q
 
 ---
 
-## 8. 자주 걸리는 것
+## 7. 자주 걸리는 것
 
 | 증상 | 원인 / 해결 |
 |---|---|

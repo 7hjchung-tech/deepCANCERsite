@@ -54,18 +54,20 @@ fi
 
 echo
 echo "=== [3/5] remaining runtime deps =================================="
-# Only what dump_diff_emb.py / smoke_test.py / model.py actually import.
-# scipy, scikit-learn, matplotlib, biotite, transformers are for the analysis
-# and structure-feature pipelines — add them with requirements.txt if needed.
-for pkg in numpy pandas yaml; do
-    if ! "$PY" -c "import $pkg" 2>/dev/null; then MISSING="${MISSING:-} $pkg"; fi
+# What dump_diff_emb.py / build_meta_x.py / train.py / tests/ actually import.
+# matplotlib, biotite and transformers are only needed by the structure-feature
+# and baseline pipelines — install those with requirements.txt if you need them.
+declare -a WANT=(numpy pandas yaml sklearn pytest)
+declare -a PIP_NAME=(numpy pandas pyyaml scikit-learn pytest)
+MISSING=()
+for i in "${!WANT[@]}"; do
+    "$PY" -c "import ${WANT[$i]}" 2>/dev/null || MISSING+=("${PIP_NAME[$i]}")
 done
-if [ -n "${MISSING:-}" ]; then
-    echo "installing:${MISSING/yaml/pyyaml}"
-    # shellcheck disable=SC2086
-    "$PY" -m pip install ${MISSING/yaml/pyyaml}
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "installing: ${MISSING[*]}"
+    "$PY" -m pip install "${MISSING[@]}"
 else
-    echo "numpy / pandas / pyyaml already present"
+    echo "numpy / pandas / pyyaml / scikit-learn / pytest already present"
 fi
 
 echo
@@ -102,4 +104,7 @@ PYCODE
 
 echo
 echo "Setup complete. Activate with:  source .venv/bin/activate"
-echo "Next:  python dump_diff_emb.py --device cuda --batch-size 32"
+echo "Next:"
+echo "  python build_meta_x.py"
+echo "  python dump_diff_emb.py --device cuda --batch-size 32"
+echo "  python train.py --config configs/m1.yaml"
