@@ -482,6 +482,21 @@ def main() -> None:
     ap.add_argument("--n-blocks", type=int, default=None)
     ap.add_argument("--dropout", type=float, default=None)
     ap.add_argument("--weight-decay", type=float, default=None)
+    # LoRA capacity (M3/M4 only). 4,124 training rows against rank-8 adapters on
+    # all 33 layers is 1.35M trainable adapter parameters; restricting the rank
+    # or the layers is the standard small-data remedy and, unlike anything tuned
+    # per gene, it is a property of the readout rather than of RAD51C.
+    ap.add_argument("--lora-rank", type=int, default=None)
+    ap.add_argument("--lora-alpha", type=float, default=None)
+    ap.add_argument("--lora-last-k", type=int, default=None,
+                    help="adapt only the last K transformer layers (default: all 33)")
+    ap.add_argument("--lora-lr", type=float, default=None)
+    ap.add_argument("--repr-layer", type=int, default=None,
+                    help="ESM-2 layer to read (e2e path). For cached runs the layer is "
+                         "whatever --cache was dumped with.")
+    ap.add_argument("--window", type=int, default=None,
+                    help="pooling window radius (e2e path); cached runs inherit it "
+                         "from the cache file.")
     ap.add_argument("--no-standardize", action="store_true",
                     help="skip train-only standardisation of struct features")
     args = ap.parse_args()
@@ -498,6 +513,30 @@ def main() -> None:
     applied = {k: v for k, v in overrides.items() if v is not None}
     if applied:
         cfg = {**cfg, **applied}
+
+    # Nested overrides (lora.*, esm.repr_layer, pooling.window_W)
+    n_layers = 33                     # ESM-2 650M
+    lora_over = {}
+    if args.lora_rank is not None:
+        lora_over["rank"] = args.lora_rank
+    if args.lora_alpha is not None:
+        lora_over["alpha"] = args.lora_alpha
+    if args.lora_last_k is not None:
+        lora_over["target_layers"] = list(range(n_layers - args.lora_last_k, n_layers))
+    if lora_over:
+        cfg = {**cfg, "lora": {**cfg["lora"], **lora_over}}
+        applied["lora"] = lora_over
+    if args.lora_lr is not None:
+        cfg = {**cfg, "lr": {**(cfg.get("lr") or {}), "lora": args.lora_lr}}
+        applied["lr.lora"] = args.lora_lr
+    if args.repr_layer is not None:
+        cfg = {**cfg, "esm": {**cfg["esm"], "repr_layer": args.repr_layer}}
+        applied["esm.repr_layer"] = args.repr_layer
+    if args.window is not None:
+        cfg = {**cfg, "pooling": {**cfg["pooling"], "window_W": args.window}}
+        applied["pooling.window_W"] = args.window
+
+    if applied:
         print(f"[cfg] overridden: {applied}  (use the SAME overrides for every "
               f"model you compare)")
 
@@ -538,6 +577,10 @@ def main() -> None:
             "max_epochs": args.epochs, "seed_list": [int(s) for s in seeds],
             "hidden_dim": cfg.get("hidden_dim"), "ffn_dim": cfg.get("ffn_dim"),
             "n_blocks": cfg.get("n_blocks"), "dropout": cfg.get("dropout"),
+            "lora": cfg.get("lora"),
+            "repr_layer": cfg.get("esm", {}).get("repr_layer"),
+            "window_W": cfg.get("pooling", {}).get("window_W"),
+            "cache": args.cache if cfg["esm_mode"] == "cached" else None,
         },
     }
     for metric in ("spearman", "pearson", "rmse"):
