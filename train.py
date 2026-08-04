@@ -112,7 +112,43 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
 # ======================================================================
 # data
 # ======================================================================
-def load_data() -> dict:
+def kfold_split(manifest: pd.DataFrame, n_folds: int, fold: int, cv_seed: int) -> np.ndarray:
+    """Re-derive train/val/test by holding out whole RESIDUE POSITIONS.
+
+    The shipped split puts 262 positions in train, 56 in val and 57 in test.
+    882 test variants therefore sit on 57 positions, and variants sharing a
+    position share their entire struct feature vector and nearly all of their
+    ESM context -- the effective sample size is far closer to 57 than to 882.
+    That is why val and test differ by a consistent ~0.08 in missense Spearman
+    for every model and setting tried: the two position sets are simply not
+    equally hard.
+
+    Rotating which positions are held out turns "our score on these 57
+    positions" into a mean and spread over folds, which is the only honest way
+    to say whether a 0.03 gap to the LLR baseline means anything on a 376-
+    residue protein.
+
+    Splitting by position (never by variant) is what the shipped manifest does
+    too -- it is what keeps the same residue out of both train and test.
+    """
+    positions = np.sort(manifest["pp"].unique())
+    rng = np.random.default_rng(cv_seed)
+    shuffled = rng.permutation(positions)
+    groups = np.array_split(shuffled, n_folds)
+
+    test_pos = set(groups[fold % n_folds].tolist())
+    val_pos = set(groups[(fold + 1) % n_folds].tolist())
+
+    pp = manifest["pp"].to_numpy()
+    split = np.where(np.isin(pp, list(test_pos)), "test",
+                     np.where(np.isin(pp, list(val_pos)), "val", "train"))
+    print(f"[cv] fold {fold}/{n_folds} (cv_seed={cv_seed}): positions "
+          f"train={len(positions) - len(test_pos) - len(val_pos)} "
+          f"val={len(val_pos)} test={len(test_pos)}")
+    return split
+
+
+def load_data(cv: tuple[int, int, int] | None = None) -> dict:
     struct_features = pd.read_csv(STRUCT_FEATURES_PATH)
     manifest = pd.read_csv(MANIFEST_PATH)
 
@@ -143,7 +179,8 @@ def load_data() -> dict:
     if np.isnan(y).any():
         raise SystemExit(f"{Y_PATH} contains {int(np.isnan(y).sum())} NaN targets")
 
-    split = struct_features["split"].to_numpy()
+    split = (kfold_split(manifest, *cv) if cv is not None
+             else struct_features["split"].to_numpy())
     var_ids = struct_features["var_id"].tolist()
 
     manifest_lookup = {
@@ -499,6 +536,14 @@ def main() -> None:
                          "from the cache file.")
     ap.add_argument("--no-standardize", action="store_true",
                     help="skip train-only standardisation of struct features")
+    ap.add_argument("--cv-folds", type=int, default=None,
+                    help="hold out whole residue positions in N folds instead of using "
+                         "the shipped split. Measures how much of a score is the luck of "
+                         "which positions landed in test.")
+    ap.add_argument("--cv-fold", type=int, default=0,
+                    help="which fold is the test set (0-indexed); fold+1 becomes val")
+    ap.add_argument("--cv-seed", type=int, default=0,
+                    help="shuffles positions before folding; keep it fixed across models")
     args = ap.parse_args()
 
     if args.device is None:
@@ -545,7 +590,8 @@ def main() -> None:
     print(f"    esm_mode={cfg['esm_mode']}  use_lora={cfg['use_lora']}  "
           f"use_block_b={cfg['use_block_b']}")
 
-    data = load_data()
+    cv = ((args.cv_folds, args.cv_fold, args.cv_seed) if args.cv_folds else None)
+    data = load_data(cv)
     if args.no_standardize:
         data["struct_scaler"] = None
         print("[data] standardisation disabled (--no-standardize)")
@@ -574,6 +620,8 @@ def main() -> None:
             * int(args.accum or cfg.get("gradient_accumulation", 1)),
             "precision": args.precision or cfg.get("precision", "fp32"),
             "select_on": args.select_on, "loss": args.loss, "patience": args.patience,
+            "cv": {"folds": args.cv_folds, "fold": args.cv_fold, "seed": args.cv_seed}
+            if args.cv_folds else None,
             "max_epochs": args.epochs, "seed_list": [int(s) for s in seeds],
             "hidden_dim": cfg.get("hidden_dim"), "ffn_dim": cfg.get("ffn_dim"),
             "n_blocks": cfg.get("n_blocks"), "dropout": cfg.get("dropout"),
