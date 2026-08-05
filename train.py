@@ -585,6 +585,18 @@ def main() -> None:
         print(f"[cfg] overridden: {applied}  (use the SAME overrides for every "
               f"model you compare)")
 
+    # A multi-layer cache concatenates k layers, so its diff vectors are 1280*k
+    # wide. Read the width off the cache instead of requiring the caller to keep
+    # --cache and bottleneck.in_dim manually in sync.
+    if cfg["esm_mode"] == "cached" and Path(args.cache).exists():
+        probe = torch.load(args.cache, weights_only=True)
+        cache_dim = int(next(iter(probe.values()))["diff"].numel())
+        del probe
+        if cache_dim != int(cfg["bottleneck"]["in_dim"]):
+            print(f"[cfg] cache diff dim {cache_dim} != bottleneck.in_dim "
+                  f"{cfg['bottleneck']['in_dim']} -> 자동 조정")
+            cfg = {**cfg, "bottleneck": {**cfg["bottleneck"], "in_dim": cache_dim}}
+
     model_id = cfg.get("model_id", Path(args.config).stem.upper())
     print(f"=== {model_id}  ({args.config})  device={args.device} ===")
     print(f"    esm_mode={cfg['esm_mode']}  use_lora={cfg['use_lora']}  "

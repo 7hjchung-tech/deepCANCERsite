@@ -41,7 +41,8 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from src.embeddings.diff_compute import compute_diff_and_mag  # noqa: E402
+from src.embeddings.diff_compute import mag_from_pooled  # noqa: E402
+from src.embeddings.diff_pooling import window_pool  # noqa: E402
 from src.embeddings.esm_encoder import ESMEncoder  # noqa: E402
 
 
@@ -68,8 +69,17 @@ def main() -> None:
     ap.add_argument("--windows", type=int, nargs="+", default=None,
                     help="sweep mode: pool with these window radii. Pooling is cheap "
                          "post-processing on hidden states already in memory.")
+    ap.add_argument("--concat-sets", nargs="+", default=None,
+                    help="sweep mode: comma-separated layer groups to CONCATENATE, e.g. "
+                         "--concat-sets 30,33 27,30,33. The pooled WT/MUT vectors are "
+                         "joined across layers before the diff, so the cache is "
+                         "1280*k wide and train.py sizes the bottleneck to match.")
+    ap.add_argument("--pool", nargs="+", default=["uniform"],
+                    help="sweep mode: pooling specs. 'uniform', or 'exp:<tau>' for "
+                         "exponentially decaying weights exp(-|i-p|/tau) that favour "
+                         "residues near the mutation. e.g. --pool uniform exp:2 exp:5")
     ap.add_argument("--out-dir", default="data/sweep",
-                    help="sweep mode: writes <out-dir>/diff_emb_L<layer>_W<window>.pt")
+                    help="sweep mode: writes <out-dir>/diff_emb_<tag>.pt")
     args = ap.parse_args()
 
     cfg = _load_config()
@@ -77,12 +87,32 @@ def main() -> None:
     cfg["esm"]["device"] = device
     print(f"[dump_diff_emb] device={device}")
 
-    sweep = args.layers is not None or args.windows is not None
-    layers = args.layers or [int(cfg["esm"]["repr_layer"])]
+    sweep = any(x is not None for x in (args.layers, args.windows, args.concat_sets)) \
+        or args.pool != ["uniform"]
+
+    def parse_pool(spec):
+        if spec == "uniform":
+            return ("uniform", 1.0, "uniform")
+        if spec.startswith("exp:"):
+            tau = float(spec.split(":", 1)[1])
+            return ("exp_decay", tau, f"exp{spec.split(':', 1)[1]}")
+        raise SystemExit(f"알 수 없는 --pool 값: {spec} ('uniform' 또는 'exp:<tau>')")
+
+    pools = [parse_pool(s) for s in args.pool]
     windows = args.windows or [int(cfg["pooling"]["window_W"])]
-    combos = [(ly, w) for ly in layers for w in windows]
+    # Each entry is (layer_tuple, window, mode, tau, tag). A single layer and a
+    # concatenated group go through the same code path; only the tuple differs.
+    groups = [((ly,), f"L{ly}") for ly in (args.layers or [int(cfg["esm"]["repr_layer"])])]
+    for spec in (args.concat_sets or []):
+        lys = tuple(int(x) for x in spec.split(","))
+        groups.append((lys, "Lcat" + "-".join(str(x) for x in lys)))
+
+    combos = [(lys, w, mode, tau, f"{gtag}_W{w}_{ptag}")
+              for lys, gtag in groups for w in windows for mode, tau, ptag in pools]
+    layers = sorted({ly for lys, _ in groups for ly in lys})
     if sweep:
         print(f"[dump_diff_emb] sweep: layers={layers} windows={windows} "
+              f"pools={[c[4].split('_')[-1] for c in combos[:len(pools)]]} "
               f"-> {len(combos)} caches from one pass")
 
     wt_seq = Path(args.wt_seq).read_text().strip()
@@ -98,7 +128,7 @@ def main() -> None:
     with torch.no_grad():
         H_wt = {ly: h[0] for ly, h in encoder.encode([wt_seq], repr_layers=layers).items()}
 
-    out: dict[tuple[int, int], dict[str, dict[str, torch.Tensor]]] = {c: {} for c in combos}
+    out: dict[str, dict[str, dict[str, torch.Tensor]]] = {c[4]: {} for c in combos}
     rows = m.to_dict("records")
     for start in range(0, len(rows), args.batch_size):
         batch = rows[start:start + args.batch_size]
@@ -114,11 +144,15 @@ def main() -> None:
                 H_mut = encoder.encode(seqs, repr_layers=layers)
             for i, r in enumerate(group):
                 p = int(r["pp"]) - 1     # 1-based pp -> 0-based residue index
-                for ly, w in combos:
-                    pool_cfg = {**cfg["pooling"], "window_W": w}
-                    res = compute_diff_and_mag(H_wt[ly], H_mut[ly][i], p, pool_cfg)
+                for lys, w, mode, tau, tag in combos:
+                    # Pool each layer, then join across layers BEFORE the diff, so a
+                    # multi-layer cache uses the same diff/magnitude definition.
+                    pw = torch.cat([window_pool(H_wt[ly], p, w, mode, tau) for ly in lys])
+                    pm = torch.cat([window_pool(H_mut[ly][i], p, w, mode, tau)
+                                    for ly in lys])
+                    res = mag_from_pooled(pw, pm)
                     # .cpu() so the cache is device-independent (see module docstring)
-                    out[(ly, w)][r["var_id"]] = {
+                    out[tag][r["var_id"]] = {
                         "diff": res["diff"].cpu(), "mag": res["mag"].cpu()
                     }
 
@@ -128,14 +162,14 @@ def main() -> None:
     print()
     if not sweep:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        torch.save(out[combos[0]], args.out)
-        print(f"[dump_diff_emb] saved {len(out[combos[0]])} entries -> {args.out}")
+        torch.save(out[combos[0][4]], args.out)
+        print(f"[dump_diff_emb] saved {len(out[combos[0][4]])} entries -> {args.out}")
         return
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    for (ly, w), d in out.items():
-        path = out_dir / f"diff_emb_L{ly}_W{w}.pt"
+    for tag, d in out.items():
+        path = out_dir / f"diff_emb_{tag}.pt"
         torch.save(d, path)
         print(f"[dump_diff_emb] saved {len(d)} entries -> {path}")
 

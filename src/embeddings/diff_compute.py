@@ -39,8 +39,18 @@ def compute_diff_and_mag(H_wt: Tensor, H_mut: Tensor, p: int, cfg: dict) -> dict
 
     pooled_wt = window_pool(H_wt, p, W, mode, tau)
     pooled_mut = window_pool(H_mut, p, W, mode, tau)
-    diff = pooled_mut - pooled_wt
+    return mag_from_pooled(pooled_wt, pooled_mut)
 
+
+def mag_from_pooled(pooled_wt: Tensor, pooled_mut: Tensor) -> dict[str, Tensor]:
+    """diff + the 4 magnitude scalars from vectors that are already pooled.
+
+    Split out of compute_diff_and_mag so a multi-layer cache can concatenate the
+    pooled WT/MUT vectors across layers first and still get exactly the same
+    diff/magnitude definition. Without this, a single-layer and a multi-layer
+    run would differ in more than the layers they read.
+    """
+    diff = pooled_mut - pooled_wt
     l2 = diff.norm(p=2)
     cos = F.cosine_similarity(pooled_wt.unsqueeze(0), pooled_mut.unsqueeze(0)).squeeze(0)
     mag = torch.stack([l2, 1.0 - cos, diff.abs().max(), diff.abs().mean()])
