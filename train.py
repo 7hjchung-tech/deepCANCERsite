@@ -165,7 +165,7 @@ def load_data(cv: tuple[int, int, int] | None = None,
     meta_file = Path(meta_path)
     if not meta_file.exists():
         raise SystemExit(
-            f"{META_X_PATH} not found. Run:  python build_meta_x.py"
+            f"{meta_path} not found. Run:  python build_meta_x.py"
         )
 
     struct_x = np.load(STRUCT_X_PATH).astype(np.float32)
@@ -204,6 +204,7 @@ def load_data(cv: tuple[int, int, int] | None = None,
 
     return {
         "struct_x": struct_x, "meta_x": meta_x, "y": y, "group": group,
+        "meta_path": meta_path,
         "var_ids": var_ids, "idx": idx,
         "manifest": manifest_lookup, "wt_seq": wt_seq,
     }
@@ -310,13 +311,14 @@ def train_one_seed(cfg: dict, data: dict, seed: int, args, out_dir: Path) -> dic
                 f"{cache_path} not found (esm_mode='cached' needs it). Run:\n"
                 f"    python dump_diff_emb.py --device {args.device}"
             )
-        model, dims = build_model(cfg, STRUCT_X_PATH, META_X_PATH, cache_path=cache_path)
+        model, dims = build_model(cfg, STRUCT_X_PATH, data["meta_path"],
+                                  cache_path=cache_path)
         model.diff_embedder.cache_to(device)
     else:
         # e2e keeps ESM-2 on cfg["esm"]["device"]; keep the two consistent.
         cfg = {**cfg, "esm": {**cfg["esm"], "device": str(device)}}
         model, dims = build_model(
-            cfg, STRUCT_X_PATH, META_X_PATH,
+            cfg, STRUCT_X_PATH, data["meta_path"],
             manifest=data["manifest"], wt_seq=data["wt_seq"],
         )
     model = model.to(device)
