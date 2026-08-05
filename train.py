@@ -148,7 +148,8 @@ def kfold_split(manifest: pd.DataFrame, n_folds: int, fold: int, cv_seed: int) -
     return split
 
 
-def load_data(cv: tuple[int, int, int] | None = None) -> dict:
+def load_data(cv: tuple[int, int, int] | None = None,
+              meta_path: str = META_X_PATH) -> dict:
     struct_features = pd.read_csv(STRUCT_FEATURES_PATH)
     manifest = pd.read_csv(MANIFEST_PATH)
 
@@ -161,14 +162,14 @@ def load_data(cv: tuple[int, int, int] | None = None) -> dict:
             "so this must match exactly."
         )
 
-    meta_path = Path(META_X_PATH)
-    if not meta_path.exists():
+    meta_file = Path(meta_path)
+    if not meta_file.exists():
         raise SystemExit(
             f"{META_X_PATH} not found. Run:  python build_meta_x.py"
         )
 
     struct_x = np.load(STRUCT_X_PATH).astype(np.float32)
-    meta_x = np.load(META_X_PATH).astype(np.float32)
+    meta_x = np.load(meta_path).astype(np.float32)
     y = np.load(Y_PATH).astype(np.float32)
 
     for name, arr in [("rad51c_X.npy", struct_x), ("rad51c_meta_X.npy", meta_x),
@@ -534,6 +535,9 @@ def main() -> None:
     ap.add_argument("--window", type=int, default=None,
                     help="pooling window radius (e2e path); cached runs inherit it "
                          "from the cache file.")
+    ap.add_argument("--meta", default=META_X_PATH,
+                    help="alternative meta matrix, e.g. one built with "
+                         "build_meta_x.py --with-annotation")
     ap.add_argument("--no-standardize", action="store_true",
                     help="skip train-only standardisation of struct features")
     ap.add_argument("--cv-folds", type=int, default=None,
@@ -603,7 +607,7 @@ def main() -> None:
           f"use_block_b={cfg['use_block_b']}")
 
     cv = ((args.cv_folds, args.cv_fold, args.cv_seed) if args.cv_folds else None)
-    data = load_data(cv)
+    data = load_data(cv, args.meta)
     if args.no_standardize:
         data["struct_scaler"] = None
         print("[data] standardisation disabled (--no-standardize)")

@@ -94,18 +94,65 @@ def build_meta_x(struct_features_path: str, manifest_path: str) -> tuple[np.ndar
     return meta_x, manifest
 
 
+ANNOT_PATH = "data/rad51c_residue_annotation.csv"
+# 'position' is the join key and 'conservation' is all zeros (never computed),
+# so neither is a usable feature.
+ANNOT_DROP = {"position", "conservation"}
+
+
+def add_annotation(meta_x: np.ndarray, manifest: pd.DataFrame,
+                   annot_path: str) -> tuple[np.ndarray, list[str]]:
+    """Append per-residue functional annotation flags, joined on position.
+
+    Block A already carries the DISTANCE from each residue to these sites; the
+    binary "is this residue part of the site" is different information, and the
+    file has been sitting unused. Constant columns are dropped rather than fed
+    to the model as dead inputs.
+    """
+    annot = pd.read_csv(annot_path)
+    cols = [c for c in annot.columns if c not in ANNOT_DROP]
+    kept = [c for c in cols if annot[c].nunique() > 1]
+    dropped = sorted(set(cols) - set(kept))
+    if dropped:
+        print(f"[build_meta_x] 상수라서 제외한 주석 컬럼: {dropped}")
+
+    lookup = annot.set_index("position")[kept]
+    joined = manifest["pp"].map(lambda p: lookup.loc[p] if p in lookup.index else None)
+    if joined.isna().any():
+        raise SystemExit("annotation 파일에 없는 위치가 있습니다")
+    extra = np.stack(joined.to_numpy()).astype(np.float32)
+    return np.concatenate([meta_x, extra], axis=1), kept
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--struct-features",
                     default="data/structure/results/rad51c_struct_features.csv")
     ap.add_argument("--manifest", default="data/split_manifest.csv")
     ap.add_argument("--out", default="data/structure/results/rad51c_meta_X.npy")
+    ap.add_argument("--with-annotation", action="store_true",
+                    help=f"append the unused per-residue flags from {ANNOT_PATH}")
+    ap.add_argument("--with-position", action="store_true",
+                    help="append the residue position normalised to [0,1]")
+    ap.add_argument("--annot-path", default=ANNOT_PATH)
     args = ap.parse_args()
 
     meta_x, manifest = build_meta_x(args.struct_features, args.manifest)
+    names = list(META_COLUMNS)
 
-    # Every row must be exactly one of the three classes.
-    row_sums = meta_x.sum(axis=1)
+    if args.with_annotation:
+        meta_x, kept = add_annotation(meta_x, manifest, args.annot_path)
+        names += kept
+    if args.with_position:
+        seq_len = float(manifest["pp"].max())
+        pos = (manifest["pp"].to_numpy(dtype=np.float32) / seq_len).reshape(-1, 1)
+        meta_x = np.concatenate([meta_x, pos], axis=1)
+        names.append("position_norm")
+    if len(names) > len(META_COLUMNS):
+        print(f"[build_meta_x] meta 차원 {len(META_COLUMNS)} -> {len(names)}: {names}")
+
+    # The first three columns must still be exactly one of the three classes.
+    row_sums = meta_x[:, :len(META_COLUMNS)].sum(axis=1)
     assert (row_sums == 1.0).all(), f"{int((row_sums != 1.0).sum())} rows are not one-hot"
 
     print(f"[build_meta_x] {meta_x.shape[0]} variants -> {meta_x.shape[1]} meta dims")
@@ -115,7 +162,7 @@ def main() -> None:
 
     for split in ["train", "val", "test"]:
         mask = (manifest["split"] == split).to_numpy()
-        counts = meta_x[mask].sum(axis=0).astype(int)
+        counts = meta_x[mask][:, :len(META_COLUMNS)].sum(axis=0).astype(int)
         print(f"    {split:<5} n={int(mask.sum()):>5}  "
               + "  ".join(f"{n}={c}" for n, c in zip(META_COLUMNS, counts)))
 
