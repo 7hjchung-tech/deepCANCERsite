@@ -11,6 +11,9 @@
 - Completed: **Task C correction round** — the split rule and the indel window
   definition were both wrong; see *Task C correction round* below. All Task B/C
   artifacts were regenerated from the corrected code.
+- Completed: **Task D — frozen-cache → Stage 1 interface**, loader, target
+  scaler, objectives, metrics and a mock plumbing consumer. **No Stage 1 model
+  was trained and no loss was selected**; see *Task D* below.
 - Deferred: any adaptation (LoRA/Q), Bradley-Terry, Mixout, KL, stage 1/2 training
 
 Storage gate: the home volume was expanded from 4.94 GB total / 0.59 GB free to
@@ -18,6 +21,229 @@ Storage gate: the home volume was expanded from 4.94 GB total / 0.59 GB free to
 `esm2_t33_650M_UR50D` checkpoint was already present in the torch.hub cache
 (`~/.cache/torch/hub/checkpoints/esm2_t33_650M_UR50D.pt`, 2,604,537,549 bytes);
 **no download was performed in this session**.
+
+---
+
+## Task D — connecting the frozen cache to Stage 1
+
+### 1. Does the team's real token-level Stage 1 exist?
+
+**Status: C — no real token Stage 1 exists in this repository.**
+
+Searched: every `*.py` outside `esm/`, both git branches (`main`,
+`minseon/esm-module`), the stash list (empty), and every `*.md`. There are no
+notebooks and no `runs/` directory.
+
+A repo-wide grep for the Module A interface — `H_WT`, `H_MUT`, `delta_H`,
+`wt_pos`, `mut_pos`, `wt_present`, `mut_present`, `delta_valid`, `token_valid`,
+`slot_kind`, `RepresentationCache` — returns hits in **only** four modules and
+their tests, all of which are Task C itself:
+`src/embeddings/representation_cache.py`, `cli.py`, `variant_map.py`,
+`contract.py`. Nothing consumes the interface.
+
+Code evidence that the existing model is the legacy pooled path, not a token
+Stage 1:
+
+| file | evidence |
+|---|---|
+| [model.py:151](../model.py#L151) | `RAD51CModel.forward(self, var_ids, struct_x, meta_x)` — the only model `forward` in the repo. It takes no per-residue tensor and no mask. |
+| [model.py:152](../model.py#L152) | `de = self.diff_embedder(var_ids)` → `{"diff": (B,1280), "mag": (B,4)}`. The residue axis is already gone before the model sees anything. |
+| [src/embeddings/diff_embedder.py](../src/embeddings/diff_embedder.py) | `DiffEmbedder.forward(var_ids) -> {"diff": (B,1280), "mag": (B,4)}` in both `cached` and `e2e` modes. |
+| [src/embeddings/diff_pooling.py:12](../src/embeddings/diff_pooling.py#L12) | `window_pool(H, p, W, mode, tau)` pools `[p-W, p+W]` from **one** position `p` used for WT and MUT alike, clamped to each sequence. It cannot express an indel frame shift, a `wt_only`/`mut_only` gap, or a padding mask. |
+| [src/embeddings/bottleneck.py](../src/embeddings/bottleneck.py) | `BottleneckMLP` input is `(B, 1280)`. |
+| [train.py:151](../train.py#L151) | `load_data()` aligns `struct_X`/`meta_X`/`y`/`split` **by row number**, asserted against the manifest — a row-order contract, not a `var_id` one. |
+| [src/analysis/lens_tracker.py:49](../src/analysis/lens_tracker.py#L49) | analysis layer also operates on `window_pool(...)` pooled vectors. |
+| [deeprad51c_concat_plan.md](../deeprad51c_concat_plan.md) | the only concat/architecture design doc, self-labelled **구버전 문서** and built around a pooled `diff_emb` 256-dim stream. |
+
+The only mentions of "Stage 1/2" anywhere are as *deferred* work
+([docs/ESM_AGENT_CONTEXT.md:57](ESM_AGENT_CONTEXT.md), and this log's own
+deferral lines). No ambiguity: there is nothing that could be mistaken for a
+current token architecture, and none was invented.
+
+**Consequence: path 2B.** Only the interface, loader, scaler, losses, metrics
+and a mock consumer were built.
+
+> **The team's real token Stage 1 implementation remains an external
+> dependency. No F-seq performance result has been produced.**
+
+### 2. Files added
+
+Nothing in Task C was modified — `git diff` over `src/embeddings/`, `configs/`
+and the Task C tests is empty, so `frozen_repr_v1.pt` and its provenance remain
+valid.
+
+| file | purpose |
+|---|---|
+| [src/stage1/interface.py](../src/stage1/interface.py) | `Stage1Batch`, `TargetBatch`, `Stage1Model` protocol, `check_prediction` |
+| [src/stage1/data.py](../src/stage1/data.py) | provenance verification, cohort binding, `FrozenReprData`, dataset/collate/loader |
+| [src/stage1/targets.py](../src/stage1/targets.py) | `TargetScaler` — train-only fit, exact inverse |
+| [src/stage1/losses.py](../src/stage1/losses.py) | `huber_loss` (δ=1), `half_mse_loss`, `conventional_mse` metric |
+| [src/stage1/metrics.py](../src/stage1/metrics.py) | Spearman with explicit definedness, raw-space MAE/RMSE/MSE, `evaluate_split` |
+| [src/stage1/protocol.py](../src/stage1/protocol.py) | the fixed pilot protocol + `assert_fair` |
+| [src/stage1/mock.py](../src/stage1/mock.py) | the mock consumer (**not a model**) |
+| [src/stage1/smoke.py](../src/stage1/smoke.py) | `python -m src.stage1.smoke` end-to-end check |
+| tests/test_stage1_{data,targets_losses,protocol}.py | 62 new tests |
+
+### 3. Loader / interface contract
+
+A Stage 1 model receives exactly:
+
+```
+H_WT / H_MUT / delta_H   [B, 3, A, 1280]  float32   layers (31, 32, 33)
+wt_pos / mut_pos         [B, A]  int64
+wt_present / mut_present [B, A]  bool
+delta_valid              [B, A]  bool     paired slots only
+token_valid              [B, A]  bool     padding marker, and NOTHING else
+slot_kind                [B, A]  int64    -> ("paired","wt_only","mut_only","unknown_mut","pad")
+```
+
+plus `var_id / split / variant_type / edit_type / pp` and the vocab and layer
+list. `Stage1Model.forward(batch) -> [B]` in **standardised** target units.
+
+What the loader guarantees, each one enforced rather than assumed:
+
+- **Provenance verified before anything trains.** `verify_cache_provenance()`
+  re-derives the provenance hash from its own contents and checks the manifest
+  hash, split-schema hash, `variant_map.py` code hash, model/backend/layers,
+  all three precisions, adapter state, window rule + version, alignment version,
+  split rule version, `contains_targets=False` and the row count. Any mismatch
+  raises `ProvenanceError` naming the fields.
+- **Rows map by `var_id`.** `cache_index_of[var_id]` is the only row identity;
+  cache order is never assumed to be manifest order. Duplicate ids, ids missing
+  from the manifest, and cache↔manifest split disagreements are all refused.
+- **Cohort = validated `in_eval_scope=True`.** Recomputed from Task B's own
+  `build_variant_record` (~1.2 s for 5,887 rows) and asserted to equal the
+  cache's row set exactly — a stale audit CSV cannot widen the cohort.
+- **Splits preserved** from the shipped manifest: train 4,123 / val 881 /
+  test 881.
+- **Masks preserved verbatim.** `Stage1Batch.validate()` enforces the full
+  contract, including that a `wt_only`/`mut_only` gap stays `token_valid=True`
+  and `delta_valid=False`, that padding is the only `token_valid=False` slot,
+  that `delta_H` is exactly 0 off `delta_valid`, and that padded slots are zero.
+- **Targets are structurally outside the features.** `Stage1Batch` has no target
+  field; the collate returns `(Stage1Batch, TargetBatch)` as two objects, so a
+  model cannot read a label from its input. `assert_no_labels()` re-checks.
+
+### 4. Target standardisation
+
+`TargetScaler.fit_on_train()` — fitted on **train rows only**, per run, and
+reused unchanged for val/test:
+
+| | |
+|---|---|
+| target column | `z_score_D4_D14` |
+| fit split | `train` (recorded on the scaler) |
+| rows used | **4,123** |
+| train mean | **-2.896999** |
+| train std | **5.835615** |
+| std convention | numpy population std, **ddof = 0** (matches the legacy `train.py`) |
+
+Guards: fewer than 2 rows, any non-finite value, a non-finite std, or
+`std <= 1e-8` all raise. The legacy code's `std or 1.0` fallback is deliberately
+*not* copied — a constant target is a cohort problem, and substituting 1.0 would
+hide it.
+
+Optimisation happens in standardised space; every reported MAE/RMSE/MSE is
+inverse-transformed to raw z-score units first. Spearman is computed on raw
+predictions and `spearman_raw_vs_standardized_absdiff` is reported to show the
+two agree (0.0 to floating point, since the map is monotonic).
+
+### 5. Objectives and the metric they are not
+
+| | space | formula |
+|---|---|---|
+| `huber` (loss) | standardised | SmoothL1/Huber, **δ = 1.0** = one train std |
+| `half_mse` (loss) | standardised | `0.5 * mean((pred_std - target_std)^2)` |
+| `conventional_mse` (metric) | **raw z-score** | `mean((pred_raw - target_raw)^2)` |
+
+Pinned by test: `half_mse = 0.5 * mse_std` and
+`conventional_mse = std^2 * mse_std = 2 * std^2 * half_mse`, so the three are
+numerically distinct and the 0.5 can never be reported as an MSE. δ is fixed,
+not searched, and `get_objective()` refuses `mae` / `log_cosh` / `ranking` /
+`focal` / plain `mse` by name.
+
+### 6. Mock integration result
+
+`.venv/bin/python -m src.stage1.smoke` → **24/24 checks passed**
+(`data/stage1/interface_smoke.json`).
+
+Verified end to end on the real 5,885-row frozen cache:
+
+- provenance verified (`b3739cda…`, `window_v2_flank_from_edit_boundaries`,
+  `split_rule_v2_edited_wt_span_only`);
+- cohort recomputed and equal to `in_eval_scope`; 5,885 of 5,887 rows;
+  splits `{train: 4123, val: 881, test: 881}`; 5,885/5,885 finite targets;
+- a batch assembled from arbitrary, reversed indices keeps its `var_id` order,
+  and targets travel with the right ids;
+- scaler fitted on train reproduces the train statistics exactly and does **not**
+  match the val mean; `inverse_transform(transform(y))` round-trips to
+  3.55e-15;
+- one train batch: `H_WT/H_MUT/delta_H` all `(32, 3, 21, 1280)` fp32, layers
+  `[31, 32, 33]`, every row `split == "train"`, gap slots `token_valid=True` and
+  `delta_valid=False`, padding `token_valid=False`;
+- the mock returns `(32,)` finite scalars; **perturbing the padded region by
+  1e3 changes the output by exactly 0.0**, while perturbing a gap slot does
+  change it — the mask contract proved, not asserted;
+- both objectives compute on the batch, `half_mse == 0.5 * mse_std` to 1e-6, and
+  gradients reach the consumer (`grad norm 2.0e+00`);
+- a val-side report carries Spearman with an explicit `undefined_reason` field
+  and raw-space MAE/RMSE/MSE.
+
+**The mock consumer is a masked mean plus one `Linear`. It was not trained,
+tuned or compared. The loss values in the smoke JSON are labelled
+`*_NOT_a_result` and are not performance numbers.**
+
+### 7. Huber vs 0.5*MSE comparison
+
+**Not run.** §4 of the task gates it on "only if the real Stage 1 is runnable",
+and it is not. No loss has been selected, and none will be selected from the
+mock — doing so would fix a scientific decision against a model that is a
+masked mean.
+
+What *is* recorded, so the comparison can be run later without re-deciding the
+protocol after seeing a result, is `src/stage1/protocol.py::PILOT`. Values that
+already existed are reused verbatim from `configs/base.yaml` (asserted by test):
+AdamW, lr 1e-4, weight decay 0.01, batch 32, grad clip 1.0, fp32, seeds
+(42, 43, 44), patience 10. `max_epochs=50` and "no scheduler" had no established
+value and are labelled **fixed pilot settings**, not tuned. `assert_fair()`
+refuses two arms that differ in any of 19 guarded fields — the loss is
+deliberately not among them, because it is the one intended difference.
+
+Selection criterion, fixed in advance: **validation missense Spearman**, tie-broken
+by raw-z MAE then raw-z RMSE, no composite score. An undefined Spearman returns
+`None`, never a NaN that could silently win a comparison.
+
+### 8. Test-label restriction
+
+No test label was read anywhere in Task D. The scaler is fitted on train only;
+the smoke check evaluates on val only; `PILOT.test_labels_used is False` is
+asserted. Test *feature* rows remain in the cache, as intended.
+
+### 9. Tests
+
+`.venv/bin/python -m pytest tests/ -q` → **205 passed** (was 143; 62 added).
+
+Covering every item the task required: `var_id` cache↔manifest alignment,
+train/val split membership, scaler fitted on train only, val standardised with
+the train scaler, inverse-transform round trip, Huber δ=1 (closed form and
+against `torch.nn.HuberLoss`), `0.5*MSE` loss vs conventional MSE metric,
+gap slots token-valid, padding token-invalid, 13 provenance-mismatch rejections,
+mock batch output shape, and no label column in the feature tensors. Spearman is
+additionally cross-checked against `scipy.stats.spearmanr` including ties.
+
+### 10. Remaining dependency / blocker
+
+The real token-level Stage 1 model. Everything on this side of the boundary is
+built and tested; a Stage 1 needs only to implement
+`forward(batch: Stage1Batch) -> Tensor[B]` and it can be trained on the frozen
+cache immediately.
+
+### 11. Deferred to Task E/F
+
+Q/LoRA adaptation, Bradley-Terry, Mixout, KL, Stage 2, any window/layer sweep,
+fusion/readout design, new loss research, structure-feature integration — none
+started. The Huber vs 0.5*MSE decision itself is deferred until a real Stage 1
+exists, and must then be made before any Q-adapted result is seen.
 
 ---
 
