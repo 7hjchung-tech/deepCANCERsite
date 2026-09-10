@@ -1,0 +1,147 @@
+# Task C — frozen ESM-2 650M representation cache + masked-WT 650M LLR.
+#
+# This config DOCUMENTS the contract that src/embeddings/representation_cache.py
+# and src/embeddings/likelihood.py implement, and supplies the run knobs for
+# `python -m src.embeddings.cli {fixture,benchmark,export,llr}`.
+#
+# The contract values below (model, repr_layers, precisions, window rule, split
+# rule, alignment version) are mirrored into every cache's provenance record and
+# are part of the hash that gates cache reuse. They are ALSO validated field by
+# field against the Python constants at CLI startup by
+# src/embeddings/contract.py: editing one here without editing the constant in
+# representation_cache.py / variant_map.py / likelihood.py makes every
+# subcommand refuse to start and name the fields that disagree. This file cannot
+# silently drift from runtime behaviour.
+#
+# `paths`, `batching.batch_size`, `window.W` and `esm.device` are live runtime
+# defaults -- the CLI reads them from here unless the flag is given explicitly.
+#
+# Out of scope for this config, deliberately: LoRA / Q-adaptation, Bradley-Terry,
+# Mixout, KL, stage 1/2 training, and any window/layer/rank search.
+
+esm:
+  backend: repo_native_esm          # the in-repo esm/ package, never pip fair-esm
+  model_name: esm2_t33_650M_UR50D   # the only checkpoint Task C uses
+  repr_layers: [31, 32, 33]         # layer order of the [B,3,A,1280] outputs
+  layer_convention: >-
+    esm.model.esm2.ESM2.forward repr_layers indices: 0 = token embedding before the
+    first transformer layer; i in 1..33 = output of layers[i-1]; index 33 is
+    overwritten by emb_layer_norm_after, so layer 33 carries the final LayerNorm.
+  adapter: none                     # frozen backbone; no LoRA in Task C
+  device: cuda                      # falls back to cpu when CUDA is absent
+  eval_mode: true
+  grad: false                       # torch.no_grad throughout
+
+precision:
+  forward: fp32                     # correctness path; recorded in provenance
+  cache: fp32                       # storage dtype of H_WT / H_MUT
+  delta: fp32                       # delta_H is ALWAYS subtracted in fp32
+  logits: fp32                      # LLR logits and log_softmax
+  autocast: false
+
+batching:
+  batch_size: 8
+  # Hard requirement, asserted in ESMEncoder._forward: one forward batch holds
+  # one residue length only. Indel MUT proteins (375/377 aa) must never share a
+  # batch with the 376 aa WT, or the BOS/EOS slice would truncate them.
+  equal_length_batches_only: true
+  group_by_length: true
+
+window:
+  W: 10
+  rule: >-
+    missense/synonymous: +-W residues around pp (2W+1 = 21 paired slots at W=10).
+    indel: the full edit event (all wt_only + all mut_only) plus EXACTLY W paired
+    flank residues on each side, counted inward from left_boundary_wt /
+    right_boundary_wt -- the boundary residues are part of those W, not an extra
+    pair outside them. Out-of-terminus slots are dropped (a terminal window is
+    shorter) and the row is padded to A with slot_kind=pad.
+  version: window_v2_flank_from_edit_boundaries
+  # Exact slot budgets at W=10, asserted by the tests and the real fixture:
+  #   missense / synonymous       10 + 1 + 10                      = 21
+  #   1-residue deletion          10 + 1 wt_only + 10              = 21
+  #   1-residue duplication       10 + 1 mut_only + 10             = 21
+  #   p.Leu338_Lys342delinsGln    10 + 5 wt_only + 1 mut_only + 10 = 26
+  # Fewer only where a terminus truncates the flank.
+  expected_slots:
+    missense: 21
+    synonymous: 21
+    one_residue_deletion: 21
+    one_residue_duplication: 21
+    leu338_lys342delinsgln: 26
+
+split:
+  # The scope rule. An in-frame edit is excluded (cross_span_edit) ONLY when the
+  # WT positions it directly edits fall in more than one split. Paired context /
+  # flank residues are attention context, not edited residues; MUT coordinates
+  # are never read as WT split positions.
+  rule: >-
+    cross_span is decided only by the directly edited WT positions:
+    deletion -> the deleted WT span start..end;
+    delins -> the directly edited WT span start..end;
+    insertion -> the WT insertion boundary positions (start, start+1);
+    duplication -> the WT boundary where the duplicate copy is inserted
+    (end, end+1). Paired context/window residues are excluded, and MUT
+    coordinates are never read as WT split positions.
+  version: split_rule_v2_edited_wt_span_only
+  source: src/embeddings/variant_map.py::_edit_geometry.edited_wt_positions
+
+alignment:
+  # Task B's canonical arrays define the edit core. Task C derives the window
+  # from the same edit geometry and then checks that the core reappears verbatim
+  # and contiguously inside it (representation_cache.core_offset_in_window).
+  version: taskB_canonical_v2
+  source: src/embeddings/variant_map.py::build_variant_record
+  arrays: [wt_pos, mut_pos, wt_present, mut_present, delta_valid, token_valid, slot_kind]
+  slot_kinds: [paired, wt_only, mut_only, unknown_mut, pad]
+  rules:
+    delta_only_on_paired_slots: true
+    synonymous_reuses_wt_tensor: true      # -> valid delta_H is exactly 0
+    gaps_are_not_padding: true             # wt_only/mut_only stay token_valid
+    token_valid_means_padding_only: true
+    same_array_index_subtraction: forbidden # gather via wt_pos / mut_pos separately
+
+embedding:
+  dim: 1280                          # ESM-2 650M hidden size
+
+dedup:
+  # One forward per (sequence, checkpoint). Many DNA rows share a protein.
+  # Reported quantities are kept separate and never conflated:
+  #   unique_sequences_encoded  distinct proteins handed to the model
+  #   model_forward_batch_calls actual model(tokens) invocations (~ /batch_size)
+  #   cache_hits                requests served without any forward
+  key: sha256(sequence)
+  reuse_wt_across_rows: true
+  reuse_wt_for_synonymous: true
+  store_full_mut_hidden_states: false      # only the windowed slice is persisted
+
+llr:
+  scoring_method: masked_marginal_wt
+  version: llr650m_v1
+  aa_order: ACDEFGHIKLMNPQRSTVWY
+  defined_for: [missense]
+  # Synonymous / indel rows are emitted with llr_valid=false and an explicit
+  # llr_undefined_reason. They are NEVER given a fabricated llr of 0.
+  undefined_policy: missing_with_reason
+  do_not_reuse: data/baseline_llr.csv       # HF esm2_t30_150M_UR50D — different model
+
+paths:
+  manifest: data/split_manifest.csv
+  wt_sequence: data/wt_sequence.txt
+  repr_out_dir: data/esm_repr_v1
+  llr_out_dir: data/esm650m_llr
+
+scope:
+  rows: in_eval_scope                        # from Task B's audit
+  include_test_rows: true                    # features are label-free
+  # Test-label restriction: representation/LLR generation may cover test rows,
+  # but z_score_D4_D14 / functional_classification for test rows must not be
+  # read or reported. The only sanctioned diagnostic is train/val-only
+  # (`cli.py llr --diagnostic`).
+  test_labels: forbidden
+  target_columns_excluded: [z_score_D4_D14, functional_classification]
+
+gates:
+  # export refuses to run unless a passing fixture report is on disk.
+  require_fixture_pass_before_export: true
+  reject_stale_provenance: true
