@@ -307,7 +307,12 @@ The masked-WT profile is over WT positions only, so it is numerically identical
 to the previous run; the scope change adds the 227 newly in-scope deletion rows
 to the table with `llr_valid=False` and an explicit reason. No fabricated
 `LLR=0`. `data/baseline_llr.csv` (HF `esm2_t30_150M_UR50D`) was not read, reused
-or overwritten. Train/val-only diagnostic, test labels never opened:
+or overwritten. `provenance_hash =
+ddf69aef6545ac39d3f7f6b27030cf77465642ec6984c4b5eba5398af26ab0e9`; recorded git
+state `73c2bfb` (this doc commit), `dirty: false` — the LLR was re-run after the
+doc commit so its provenance records a clean tree; the code it ran is identical
+to `8c2fc21`, which is what the frozen cache records. Train/val-only diagnostic,
+test labels never opened:
 Spearman(LLR, z) = **0.504** (train, n=3,195) and **0.611** (val, n=671) —
 unchanged, as expected.
 
