@@ -124,7 +124,7 @@ The two remaining exclusions, both genuine and both `cross_span_edit`:
 
 Supported examples: `p.Arg2del` edits WT {2} = train → kept; `p.Gly3del` edits
 WT {3} = val → kept; `p.Lys186dup` inserts at boundary {186, 187}, both train →
-kept. All 357 real deletion rows delete a single residue, so under the corrected
+kept. All 356 real pure-deletion rows delete a single residue, so under the corrected
 rule none of them can be cross-span — asserted row by row in the tests.
 `audit.json` now carries `split_rule`, `split_rule_version` and a per-row
 `indel_split_decisions` block for all 359 in-frame indels.
@@ -179,9 +179,158 @@ only `{pp, pp+1}`: `p.Lys186dup` → `{train}` → in scope; `p.Val351dup` →
 
 Full suite: **143 passed** (`.venv/bin/python -m pytest tests/ -q`).
 
-### Artifacts regenerated from this correction
+---
 
-See *Task C artifacts (regenerated)* below.
+## Task C artifacts (regenerated)
+
+Everything below was regenerated from the corrected code at commit
+`8c2fc21` with a clean tree, in this order: audit → benchmark → export → LLR.
+Every previous artifact was invalid: `window_rule_version`,
+`alignment_version` and the new `split_rule` / `split_rule_version` are all
+provenance-identity fields, so the old caches would be refused as stale anyway.
+
+Commands:
+
+```
+.venv/bin/python -m src.embeddings.cli fixture --device cuda --batch-size 4
+.venv/bin/python -m src.embeddings.variant_map --out-dir data/variant_audit
+.venv/bin/python -m src.embeddings.cli benchmark --device cuda --batch-size 8 --n-seqs 32
+.venv/bin/python -m src.embeddings.cli export --device cuda --batch-size 8
+.venv/bin/python -m src.embeddings.cli llr --device cuda --batch-size 8 --diagnostic
+.venv/bin/python -m pytest tests/ -q
+```
+
+### rows / sequences / forward calls
+
+| | old (invalid) | regenerated |
+|---|---|---|
+| input rows | 5,887 | 5,887 |
+| supported rows | 5,658 | **5,885** |
+| failed rows | 229 (`cross_span_edit`) | **2 (`cross_span_edit`)** |
+| rows by split | train 3,997 / val 829 / test 832 | **train 4,123 / val 881 / test 881** |
+| rows by variant type | missense 4,555 / synonymous 973 / indel 130 | **missense 4,555 / synonymous 973 / indel 357** |
+| rows by edit type | — | missense 4,555 / synonymous 973 / deletion 356 / duplication 1 |
+| alignment width `A` | 24 | **21** |
+| unique MUT proteins | 2,500 | **2,717** |
+| `unique_sequences_encoded` | (reported as 2,500 "forwards") | **2,717** |
+| `model_forward_batch_calls` | not measured | **342** |
+| `cache_hits` | 2,862 | **3,079** |
+| `sequence_requests` | — | 5,796 |
+| stored MUT window tensors | 2,861 | **3,078** |
+
+The old report's `actual_esm_forwards=2500` was a sequence count. The
+regenerated run separates them: **2,717 distinct proteins** (including the WT)
+were encoded in **342 actual `model(tokens)` calls** at batch size 8, and 3,079
+of the 5,796 sequence requests were served from the in-memory store with no
+forward at all.
+
+Window widths across the export (`slots_per_row`): 5,596 rows get the full 21
+slots; 289 rows near a terminus get 11–20. Nothing exceeds 21 — the 26-slot
+delins is out of scope, which is why the fixture's `A` (26) still exceeds the
+export's (21).
+
+### frozen cache
+
+`python -m src.embeddings.cli export --device cuda --batch-size 8` — 145.6 s
+(forward 140.5 s, alignment 1.6 s, serialization 2.9 s; model load 10.4 s
+reported separately).
+
+| artifact | bytes |
+|---|---|
+| `data/esm_repr_v1/frozen_repr_v1.pt` | 1,003,276,698 |
+| `data/esm_repr_v1/frozen_repr_v1.provenance.json` | 2,860 |
+| `data/esm_repr_v1/export_report.json` | 1,564 |
+| `data/esm_repr_v1/benchmark.json` | 3,162 |
+| `data/esm_repr_v1/fixture_report.json` | 16,501 |
+| `data/esm_repr_v1/fixture_repr.pt` (+ provenance) | 8,984,446 (+2,856) |
+| directory total | 1,012,288,087 |
+
+`wt_full [3,376,1280]` stored once, 3,078 deduplicated MUT window tensors
+`[3,21,1280]`, per-row coordinate/mask arrays, and label-free identifiers.
+`H_WT` and `delta_H` are reconstructed on load in FP32, bit-exact.
+
+Provenance (`provenance_hash =
+b3739cda25435959fcf42df8831e7bbb5d4e898ae77f066b4cad0892a4a6b377`) now also
+records `split_rule` and `split_rule_version` alongside the window rule, and
+both are provenance-identity fields. Recorded git state:
+`8c2fc21edd96371719fcfdaf01d17f1f38eec840`, branch `minseon/esm-module`,
+`dirty: false`. Verified after the run: reload matches the expected provenance,
+`no targets stored = True`, `p.Lys186dup` present with 20 paired + 1 mut_only
+slots, `p.Val351dup` and the delins absent, synonymous valid `delta_H` exactly
+0.0.
+
+### benchmark
+
+`--n-seqs 32`, 32 distinct real sequences (375 ×3, 376 ×28, 377 ×1), warm-up
+excluded, forward timed with CUDA events.
+
+| | |
+|---|---|
+| GPU / torch / CUDA | Tesla V100-SXM2-32GB / 2.5.1+cu124 / 12.4 |
+| precision (forward / cache / delta) | fp32 / fp32 / fp32, autocast off |
+| batch size / layers / W / A | 8 / [31,32,33] / 10 / **21** |
+| checkpoint + model load (separate) | 10.46 s, no download |
+| tokenization / forward | 0.087 s / 1.528 s |
+| alignment / serialization | 0.022 s / 0.022 s |
+| throughput | **18.83 seq/s** overall, 20.94 forward-only |
+| peak VRAM allocated / reserved | 2,915.4 MiB / 3,122.0 MiB |
+| process RSS | 1,128.6 MiB |
+| sample output | 30,967,571 B for `[32,3,21,1280]` |
+
+Projection from these numbers: 1,489,346,618 B for the full export; actual
+1,003,276,698 B — the projection still scales serialization per row rather than
+per stored unique window, so it over-estimates.
+
+### 650M LLR / profile
+
+`--diagnostic`, 19.1 s of masked forwards.
+
+| artifact | bytes |
+|---|---|
+| `data/esm650m_llr/llr_650m.csv` | 878,731 |
+| `data/esm650m_llr/profile_650m.npz` | 29,170 |
+| `data/esm650m_llr/provenance.json` | 1,914 |
+| `data/esm650m_llr/llr_report.json` | 1,250 |
+| `data/esm650m_llr/llr_diagnostic_trainval.json` | 237 |
+
+| | |
+|---|---|
+| rows in scope | **5,885** (was 5,658) |
+| `masked_positions` | 375 |
+| `masked_inputs` | 375 |
+| `model_forward_batch_calls` | **47** |
+| profile shape | `[375, 20]`, AA order `ACDEFGHIKLMNPQRSTVWY` |
+| LLR valid | 4,555, all missense |
+| LLR undefined | 1,330 — synonymous 973, codon_deletion 349, clinical_inframe_deletion 7, clinical_inframe_insertion 1 |
+
+The masked-WT profile is over WT positions only, so it is numerically identical
+to the previous run; the scope change adds the 227 newly in-scope deletion rows
+to the table with `llr_valid=False` and an explicit reason. No fabricated
+`LLR=0`. `data/baseline_llr.csv` (HF `esm2_t30_150M_UR50D`) was not read, reused
+or overwritten. Train/val-only diagnostic, test labels never opened:
+Spearman(LLR, z) = **0.504** (train, n=3,195) and **0.611** (val, n=671) —
+unchanged, as expected.
+
+### audit
+
+`data/variant_audit/audit.json` (11,715,145 B) and `validated_manifest.csv`
+(4,518,459 B). The manifest now carries `left_boundary_wt`,
+`right_boundary_wt`, `right_offset`, `edited_wt_positions`,
+`split_positions_considered` and `split_rule_version` per row, so each scope
+decision can be re-derived from the CSV alone.
+
+### 실패하거나 지원되지 않은 항목
+
+- **2 rows excluded**, both genuine `cross_span_edit`: `p.Leu338_Lys342delinsGln`
+  (edited WT 338–342 spans train/val) and `p.Val351dup` (insertion boundary
+  351/352 spans test/val). Both are still exercised by the fixture and the test
+  suite, which is why the fixture's `A` is 26 and the export's is 21.
+- No row failed for an ESM, alignment, window or serialization reason;
+  `failed_reasons` is `{"cross_span_edit": 2}` and nothing else.
+- `ins` (a pure HGVS insertion) still has no rows in this cohort. Its boundary
+  handling was corrected here (it previously emitted no left boundary pair and
+  placed the right pair one residue too far) and is covered by unit tests only.
+- The benchmark's length mix is still dominated by 376 aa, because the cohort is.
 
 ---
 
@@ -437,7 +586,7 @@ DNA rows (5,658) and unique protein sequences (2,500) are recorded separately in
 
 ---
 
-## Commands executed (Task C)
+## Commands executed (Task C, original run)
 
 1. `df -h ~` — storage gate check
 2. `.venv/bin/python -m pytest tests/test_variant_map.py -q`
@@ -451,7 +600,7 @@ DNA rows (5,658) and unique protein sequences (2,500) are recorded separately in
 
 ---
 
-## Task A / Task B record (unchanged)
+## Task A / Task B record
 
 ### Task A
 
@@ -469,6 +618,11 @@ DNA rows (5,658) and unique protein sequences (2,500) are recorded separately in
 - `supported_by_split` and `supported_by_split_and_variant_type` in the audit output
 - Real fixture validation for `p.Leu338_Lys342delinsGln` and manifest-level cross-span
   exclusion audit
-- Regression checks in [tests/test_variant_map.py](../tests/test_variant_map.py) — still passing
-- `data/variant_audit/{validated_manifest.csv,audit.json}` regenerated in Task C
-  (see *바뀐 파일*); current numbers are 5,658 supported / 229 excluded
+- **The cross-span rule was corrected** — it read the alignment (paired context
+  residues and MUT coordinates) instead of the directly edited WT span. See
+  *Task C correction round*. `split_rule_v2_edited_wt_span_only`.
+- Regression checks in [tests/test_variant_map.py](../tests/test_variant_map.py),
+  extended with the split-rule cases (flank-only difference, multi-residue delins,
+  both real duplication rows, whole-manifest outcome)
+- `data/variant_audit/{validated_manifest.csv,audit.json}` regenerated from the
+  corrected rule: **5,885 supported / 2 excluded**
