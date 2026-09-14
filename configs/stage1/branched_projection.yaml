@@ -1,0 +1,4 @@
+# Model B: Δ-projection for paired slots + separate WT/MUT projections for
+# one-sided slots. See README_STAGE1.md section "Three models".
+extends: base.yaml
+model_id: branched_projection

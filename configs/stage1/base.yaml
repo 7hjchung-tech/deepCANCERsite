@@ -1,0 +1,31 @@
+# Shared Stage 1 settings. paired_delta.yaml / branched_projection.yaml /
+# unified_reference_delta.yaml each `extends: base.yaml` and set ONLY
+# model_mode-independent overrides they need (in practice: none yet -- the
+# three models are meant to differ ONLY in content-builder architecture,
+# which is selected by the entry point via --model, not by config).
+#
+# ESM backbone is frozen/eval in every mode -- there is no esm_mode/use_lora
+# switch here the way base.yaml (legacy M1-M4) has one.
+
+esm_checkpoint: "esm2_t33_650M_UR50D"
+layers: [33]              # repr_layers passed to ESMEncoder; index convention in CLAUDE.md
+d_esm: 1280
+
+window_radius: 10          # sweep candidates: see experiment_plan / train_stage1.py --windows
+bottleneck_dim: 32
+head_hidden: 256
+dropout: 0.1
+
+init_seed: 1234            # shared-component seed -- see model.py _build_seeded
+
+lr: 1.0e-4
+weight_decay: 0.01
+batch_size: 32
+loss: huber
+huber_delta: 1.0
+select_on: subset          # mean of within-group Spearman(missense, indel) -- same convention as train.py
+patience: 10
+max_epochs: 100
+
+seeds: [42, 43, 44]
+split_policy: shipped       # "shipped" | "position_cv" (see split_audit.py + train_stage1.py --cv-folds)

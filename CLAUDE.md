@@ -86,3 +86,24 @@ v = self.v_proj(value)
 - training loop
 - classification head
 - LoRA 파라미터 주입 (구조 파악만 완료)
+
+---
+
+## Stage 1 구현 현황 (별도 경로, 2026-09-14)
+
+M1–M4 concat 경로(`model.py`/`train.py`/`dataset.py`/`src/embeddings/*`)는
+그대로 두고, frozen-ESM 표현 비교 실험을 `src/stage1/` 이하에 별도로 구현함.
+세 모델(`paired_delta`/`branched_projection`/`unified_reference_delta`) +
+공통 alignment/cache/dataset/pooling/head/checkpoint + CPU synthetic 검증
+완료. 자세한 설계·수식·명령어는 **README_STAGE1.md** 참고.
+
+- 구현 위치: `src/stage1/*`, `configs/stage1/*.yaml`, `train_stage1.py`,
+  `dump_stage1_cache.py`, `tests/test_stage1_*.py`.
+- 이번 세션에서 실행한 것: `pytest tests/` (114 passed), `train_stage1.py
+  --dry-run` (3개 모델 forward/backward 연결성 확인, optimizer.step() 없음),
+  `train_stage1.py --audit-split` (실제 manifest 대상, edited-span overlap
+  2건 발견·보고), `train_stage1.py --plan`.
+- 이번 세션에서 실행하지 않은 것: 실제 ESM-2 650M 다운로드/추출, `--train`,
+  `--execute-plan`, test split 평가, git commit/push.
+- 다음 단계: `dump_stage1_cache.py`로 raw cache 생성(ESM 다운로드 필요) →
+  window/edited-span policy 확정 → `--plan`으로 조합 생성 → `--train` 실행.

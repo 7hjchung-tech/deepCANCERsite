@@ -1,0 +1,3 @@
+# Model A: paired-slot Δ only. See README_STAGE1.md section "Three models".
+extends: base.yaml
+model_id: paired_delta

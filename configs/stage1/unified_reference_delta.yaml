@@ -1,0 +1,4 @@
+# Model C: one shared projection over [R; Δ; flags]. See README_STAGE1.md
+# section "Three models" and the doc's 6.6 unified-input note.
+extends: base.yaml
+model_id: unified_reference_delta
