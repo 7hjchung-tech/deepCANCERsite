@@ -4,7 +4,7 @@ Frozen remains the reference. This handoff includes the completed matched Q and 
 
 ## Files and download
 
-The Git-tracked manifest, loader, metadata, fold assignments and receipts accompany nine representation caches and eight pass-5 LoRA checkpoints. Binary files belong in payload/ and are distributed separately as GitHub release assets. Publication is pending until an upload receipt exists. Download every `.pt` release asset into this directory's `payload/` folder, retaining its filename.
+The Git-tracked manifest, loader, metadata, fold assignments and receipts accompany nine representation caches and eight pass-5 LoRA checkpoints. Binary files in payload/ are tracked using Git LFS. Install Git LFS on each machine before cloning or pulling. A local commit does not establish that the files have been pushed; check the push result before sharing the branch.
 
 The caches use deduplicated storage. `load_hr.py` reconstructs H_WT, H_MUT and delta_H exactly in FP32; it does not rerun ESM. This saves several GB compared with storing three expanded tensors per variant. Install Python 3.10+ and PyTorch. No GPU or pretrained ESM checkpoint is required for consuming the features.
 
@@ -35,11 +35,24 @@ Every cache covers the same 5,885 supported variants, including train/val/test f
 
 Local payload files are hard links to completed immutable experiment artifacts to save disk space. Do not modify them in place. Source artifact paths in manifest.json are audit references, not dependencies on the receiver's machine.
 
-## Manual GitHub release upload
+## Normal Git workflow with LFS
 
-1. Push the handoff documentation commit when repository authentication is available.
-2. In the repository's Releases page, create a release with a new tag such as `module-a-hr-v1` targeting that commit. Mark it as a pre-release because the adapted candidates remain exploratory.
-3. Attach `data/module_a_hr_v1_support.zip` and all 17 `.pt` files inside this folder's `payload/` directory. The support ZIP contains the loader, metadata, manifest, instructions and verification receipt; it excludes the large tensors.
-4. Publish the release and send your teammate the release URL. They extract the support ZIP, put the `.pt` assets in `module_a_hr_v1/payload/`, then run `python load_hr.py` from `module_a_hr_v1/`.
+Git LFS is configured only for this handoff's `payload/*.pt`. The repository stores small pointers; `git push` uploads the associated tensors through its LFS hook. All 17 binary files total about 9.04 GB. The repository owner's available LFS storage and transfer allowance must cover the upload and downloads.
 
-GitHub rejects ordinary Git files above 100 MiB; each representation cache here is approximately 957 MiB. Use release assets for these binaries, or separately configure Git LFS. Do not force-add payload/ into normal Git history. The ordinary Git commit alone does not deliver the tensors.
+From the repository root, once your GitHub credentials are available:
+
+```bash
+git push origin minseon/esm-module
+```
+
+For your teammate, with Git LFS installed:
+
+```bash
+git lfs install
+git clone --branch minseon/esm-module https://github.com/7hjchung-tech/deepCANCERsite.git
+cd deepCANCERsite
+git lfs pull
+python handoffs/module_a_hr_v1/load_hr.py
+```
+
+In an existing checkout, switch to the shared branch and pull it, then run `git lfs pull`. Future handoff changes use ordinary `git add`, `git commit`, and `git push`. Keep `.gitattributes` committed. Separate release uploads are no longer required; the previously prepared support ZIP is optional.
