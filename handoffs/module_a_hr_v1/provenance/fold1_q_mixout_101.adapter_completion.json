@@ -1,0 +1,48 @@
+{
+  "binding": {
+    "identity": {
+      "protocol_sha256": "f1085b7b65257dfd0be5095ef92a6eef6f3c5f6aa747789ac3e94295e8674eb9",
+      "training": {
+        "fold_identity": {
+          "manifest_content_sha256": "7ac397a6890616a2d30fe8b86d38b808304f6c66547f3e27c596d8210aa95122",
+          "outer_fold": 1,
+          "training_ids_sha256": "89aa914564bc90298d8d0e60c35ab846666acfd0a6a7a044013856b60de04f3f",
+          "validation_ids_sha256": "27e9252bab68259a8823bcc27856ea278a012ae123ce641a5f8e399a896b330b",
+          "test_ids_sha256": "0e951396b57c3dfae637018700b3750ea31ed0d34174108d01030d6619fb4a33"
+        },
+        "training_target_sha256": "d0c2143227341d08b0a48bc81710794727a5d4c3279e19a81521daab9871570a",
+        "scaler": {
+          "mean": -3.0318359312482417,
+          "std": 5.932246927188466,
+          "ddof": 0,
+          "target_column": "z_score_D4_D14",
+          "n_train_rows": 4201,
+          "fit_split": "train",
+          "std_convention": "numpy population std, ddof=0"
+        },
+        "retained_target_roles": [
+          "train",
+          "val"
+        ],
+        "test_targets_retained": false
+      }
+    },
+    "dependencies": {}
+  },
+  "attempt": "attempt_6ed170bf769f425d8a5897064a350982",
+  "files": {
+    "adapter/batches.jsonl": "a94fae884fd3165e040bfb8cf310a6eb8afc2ea3903ee68b865f8083805c29c0",
+    "adapter/pass1.pt": "d0a7dc79d0207e8ad90cb1c68f95680bd183689a495de0180cffe032a606a04e",
+    "adapter/pass1.resume.pt": "7aed04000034b03897199f6bb90e2a0816e06ecd4dfbde439fde3fb725adf975",
+    "adapter/pass2.pt": "1a30796e60db92a440cd0b0b336568400af61620381eed4eef5dad53290f0f83",
+    "adapter/pass2.resume.pt": "cf160bc9ec4a12fc2f976553fc771711401688e10c5c1bf4a82b94dd54768eac",
+    "adapter/pass3.pt": "b5a268a11b031475cfa3944fe23015471b7d62ceef43edee2f3218fa2970110d",
+    "adapter/pass3.resume.pt": "e2ed8200cf828d441254d66099ee18f7b5996497859b7a01b2830461d1c4bf11",
+    "adapter/pass4.pt": "7388e2a72bfe57bd97a86053f399d33eebeef27b28536e4bf7bab22a1a2ebd06",
+    "adapter/pass4.resume.pt": "6f4fd46cbf3195a5c8349e9f2b5fd5df333be46fdfb485f02998cdff2a20682b",
+    "adapter/pass5.pt": "ce1525faaeda949b735daf236c416e0dffbc652d942e72d97e9cad47ae98b4c7",
+    "adapter/pass5.resume.pt": "f0fea6a4ec0358abee23f0c032b908443db0126cf385e840abd97eb3388cadfc",
+    "adapter/provenance.json": "359972742ac201e5a9f5320a746aabbab37610d22e8d68ea629bd4055ce1222c",
+    "adapter/report.json": "ffc93903178270a5fef1f19b7728f2a28243ba5c262377d47d3370f56de307f7"
+  }
+}

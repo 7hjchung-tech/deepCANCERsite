@@ -1,0 +1,40 @@
+{
+  "binding": {
+    "identity": {
+      "protocol_sha256": "f1085b7b65257dfd0be5095ef92a6eef6f3c5f6aa747789ac3e94295e8674eb9",
+      "training": {
+        "fold_identity": {
+          "manifest_content_sha256": "7ac397a6890616a2d30fe8b86d38b808304f6c66547f3e27c596d8210aa95122",
+          "outer_fold": 0,
+          "training_ids_sha256": "494103fdcee1c7c30abe54be879898ce9c712a0274b9ace48e467c5aa9a636c3",
+          "validation_ids_sha256": "0e951396b57c3dfae637018700b3750ea31ed0d34174108d01030d6619fb4a33",
+          "test_ids_sha256": "5dadda22e2937206c431becdde8987bbea4d343a5fec759c1f22c03f403d0e29"
+        },
+        "training_target_sha256": "e778d38b1f28fd6e1e416710cc530a2c66786e59bd54e0234831a68834ffe6dd",
+        "scaler": {
+          "mean": -3.025655607469706,
+          "std": 5.951515751735695,
+          "ddof": 0,
+          "target_column": "z_score_D4_D14",
+          "n_train_rows": 4172,
+          "fit_split": "train",
+          "std_convention": "numpy population std, ddof=0"
+        },
+        "retained_target_roles": [
+          "train",
+          "val"
+        ],
+        "test_targets_retained": false
+      }
+    },
+    "dependencies": {
+      "adapter": "75a42ccf10de8cfc6064b415cf16a6d3db1d5365fb4006dc2f11004b1b7f429e"
+    }
+  },
+  "attempt": "attempt_e0533098745b4624aa6f55538fcc55cc",
+  "files": {
+    "repr.provenance.json": "e0c65b720908027f73d51c1113d516f7835c7bb3affd5179df1bb4ae75f32a83",
+    "repr.pt": "00148beab153e968342ff2e1167ba74d7cc4a165ad148f773b72b614cc1aef71",
+    "repr.receipt.json": "96c6101069822200cb7525e9112175fe80c7e9857329893e4febfa1a2ce951a0"
+  }
+}

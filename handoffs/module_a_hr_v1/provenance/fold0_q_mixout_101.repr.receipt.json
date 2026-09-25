@@ -1,0 +1,39 @@
+{
+  "fixture_direct_forward_max_abs_error": 0.0,
+  "frozen_identity_rejected": true,
+  "cache_sha256": "ae15c4080dc8bac8909708726558c84dac167c40f70abe2aeee31f8248c6638f",
+  "adapter_sha256": "bd05f9e3c8c649d1ca9310f5b861907e5437f6932d58cb2127c94522d7994d2a",
+  "provenance_hash": "4bde27fd36ff9fd54e8b4c78e06f01164624e149168ab8eda83b89dea0a45070",
+  "rows": 5885,
+  "seconds": 169.0130922619719,
+  "forward_calls": 689,
+  "streaming": true,
+  "test_labels_used": false,
+  "validation_mode": "exact_original_batch_replay",
+  "batch_vs_single_diagnostics": [
+    {
+      "var_id": "chr17_58692647_C_G",
+      "exact_replay_max_error": 0.0,
+      "batch_size": 4,
+      "max_abs_error": 0.00042724609375
+    },
+    {
+      "var_id": "chr17_58692647_CGC_AGA",
+      "exact_replay_max_error": 0.0,
+      "batch_size": 1,
+      "max_abs_error": 0.0
+    },
+    {
+      "var_id": "chr17_58692647_CGC_",
+      "exact_replay_max_error": 0.0,
+      "batch_size": 4,
+      "max_abs_error": 0.0003662109375
+    },
+    {
+      "var_id": "chr17_58696842__AAA",
+      "exact_replay_max_error": 0.0,
+      "batch_size": 1,
+      "max_abs_error": 0.0
+    }
+  ]
+}

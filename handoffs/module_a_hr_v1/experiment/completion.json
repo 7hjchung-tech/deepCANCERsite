@@ -1,0 +1,13 @@
+{
+  "status": "completed",
+  "fits": 20,
+  "reference": "frozen",
+  "files": {
+    "records.json": "fe8a5d2e553fc1b611b6577676925d4c7a343d781e896fd42d69dff2d875a327",
+    "comparison_by_fit.csv": "4d079d45c430e534d31560cc81995de9df2a106cb5d7a728c04d77621faf8591",
+    "bootstrap_draws.npy": "85cf3014467afeb408aa256a85d4951dc73f4942eb1c666ac5c7b1a5622d0387",
+    "seed_fold_means.csv": "5cf4efc0916fcf9984a9929c3395beafc9940d8e22c1ef22ad976edacbde7d76",
+    "comparison.json": "f8ec490d1d81f6931debeebd9f6ec83912b94ff05c35bc878fc536ce0f18e1e7",
+    "RESULTS.md": "6dcd0fc265a13245e87b288fc81c7876a51205e66110128c1fb39b0ed54d021c"
+  }
+}

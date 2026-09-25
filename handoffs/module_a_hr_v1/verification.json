@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "scope": "All payloads SHA-256 checked against completed artifacts during packaging; each cache rehashed by loader; CPU batch parity against repository loader across every observed edit/mask geometry and spaced rows. Adapter binding and training-role isolation checked. No new training or efficacy scoring.",
+  "entries": [
+    {
+      "name": "frozen",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold0_q_101",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold0_q_102",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold0_q_mixout_101",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold0_q_mixout_102",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold1_q_101",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold1_q_102",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold1_q_mixout_101",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    },
+    {
+      "name": "fold1_q_mixout_102",
+      "rows": 5885,
+      "parity_rows": 97,
+      "geometry_patterns": 40,
+      "max_error": 0
+    }
+  ],
+  "loader_sha256": "2a856ea11abc427799d100f908a072229f7337c625fc6dae7bdc58aa9035b750"
+}
