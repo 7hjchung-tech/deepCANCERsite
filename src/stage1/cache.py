@@ -104,7 +104,12 @@ class RawStage1Cache:
 
     @staticmethod
     def load(path: str | Path) -> "RawStage1Cache":
-        raw = torch.load(path, weights_only=False)
+        # mmap=True: this cache stores ~5.9k separate small tensors (per-variant
+        # H_mut entries), and eager torch.load on the network-backed volume used
+        # in this workspace took ~37 min to materialize all of them up front.
+        # Memory-mapping defers the actual reads to first access, cutting the
+        # initial load to ~11 min without changing what's returned.
+        raw = torch.load(path, weights_only=False, mmap=True)
         if raw.get("schema_version") != CACHE_SCHEMA_VERSION:
             raise ValueError(
                 f"{path}: cache schema_version {raw.get('schema_version')!r} != "

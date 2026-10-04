@@ -1,0 +1,491 @@
+{
+  "generated_at": "2026-10-04T00:47:25.634370+00:00",
+  "runs_root": "runs/stage1_v2",
+  "analysis_out": "analysis/stage1_v2",
+  "n_runs_planned": 45,
+  "n_runs_found": 45,
+  "models": [
+    "paired_delta",
+    "branched_projection",
+    "unified_reference_delta"
+  ],
+  "windows": [
+    5,
+    10,
+    20
+  ],
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "missing_runs": [],
+  "sweep_manifest": {
+    "provenance": {
+      "git": {
+        "commit": "9d22d8e3ef6ba6bd2fec16bf4eb6e34d2356c618",
+        "dirty": true,
+        "dirty_files": [
+          "A  analyze_stage1_sweep.py",
+          "A  run_stage1_sweep.py",
+          "M  src/stage1/cache.py",
+          "M  src/stage1/engine.py"
+        ]
+      },
+      "gpu": {
+        "torch_version": "2.5.1+cu124",
+        "cuda_available": true,
+        "device_name": "NVIDIA TITAN Xp",
+        "total_memory_gb": 12.8,
+        "cuda_version": "12.4"
+      }
+    },
+    "args": {
+      "models": [
+        "paired_delta",
+        "branched_projection",
+        "unified_reference_delta"
+      ],
+      "windows": [
+        5,
+        10,
+        20
+      ],
+      "seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ],
+      "manifest": "data/split_manifest.csv",
+      "wt_seq": "data/wt_sequence.txt",
+      "cache": "data/stage1/raw_cache.pt",
+      "out_root": "runs/stage1_v2",
+      "device": "cuda",
+      "epochs": 120,
+      "patience": 10,
+      "min_delta": 0.0,
+      "checkpoint_epochs": [
+        10,
+        20,
+        30,
+        40,
+        60,
+        80
+      ],
+      "dry_run": false
+    },
+    "combos_planned": 45,
+    "results": [
+      {
+        "run_id": "paired_delta__W20__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/paired_delta/W20/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 27,
+        "train_seconds": 7566.0,
+        "best_epoch": 17,
+        "test_subset": 0.6239613377582843,
+        "wall_seconds": 8526.5
+      },
+      {
+        "run_id": "paired_delta__W20__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/paired_delta/W20/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 28,
+        "train_seconds": 481.2,
+        "best_epoch": 18,
+        "test_subset": 0.6302119582241009,
+        "wall_seconds": 484.3
+      },
+      {
+        "run_id": "paired_delta__W20__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/paired_delta/W20/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 25,
+        "train_seconds": 423.5,
+        "best_epoch": 15,
+        "test_subset": 0.6170847450698791,
+        "wall_seconds": 426.4
+      },
+      {
+        "run_id": "branched_projection__W5__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/branched_projection/W5/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 20,
+        "train_seconds": 255.9,
+        "best_epoch": 10,
+        "test_subset": 0.5714466055416392,
+        "wall_seconds": 258.0
+      },
+      {
+        "run_id": "branched_projection__W5__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/branched_projection/W5/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 20,
+        "train_seconds": 258.0,
+        "best_epoch": 10,
+        "test_subset": 0.5802991240416162,
+        "wall_seconds": 260.0
+      },
+      {
+        "run_id": "branched_projection__W5__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/branched_projection/W5/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 20,
+        "train_seconds": 290.5,
+        "best_epoch": 10,
+        "test_subset": 0.5950255915520539,
+        "wall_seconds": 292.6
+      },
+      {
+        "run_id": "branched_projection__W5__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/branched_projection/W5/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 20,
+        "train_seconds": 256.2,
+        "best_epoch": 10,
+        "test_subset": 0.5558244745601143,
+        "wall_seconds": 258.3
+      },
+      {
+        "run_id": "branched_projection__W5__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/branched_projection/W5/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 22,
+        "train_seconds": 283.9,
+        "best_epoch": 12,
+        "test_subset": 0.5758326404889135,
+        "wall_seconds": 286.1
+      },
+      {
+        "run_id": "branched_projection__W10__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/branched_projection/W10/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 23,
+        "train_seconds": 413.5,
+        "best_epoch": 13,
+        "test_subset": 0.6565797439138192,
+        "wall_seconds": 416.6
+      },
+      {
+        "run_id": "branched_projection__W10__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/branched_projection/W10/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 21,
+        "train_seconds": 377.9,
+        "best_epoch": 11,
+        "test_subset": 0.6399964712253037,
+        "wall_seconds": 380.9
+      },
+      {
+        "run_id": "branched_projection__W10__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/branched_projection/W10/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 20,
+        "train_seconds": 361.1,
+        "best_epoch": 10,
+        "test_subset": 0.6518627009732494,
+        "wall_seconds": 364.1
+      },
+      {
+        "run_id": "branched_projection__W10__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/branched_projection/W10/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 26,
+        "train_seconds": 468.1,
+        "best_epoch": 16,
+        "test_subset": 0.648058254829748,
+        "wall_seconds": 471.1
+      },
+      {
+        "run_id": "branched_projection__W10__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/branched_projection/W10/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 22,
+        "train_seconds": 397.4,
+        "best_epoch": 12,
+        "test_subset": 0.6263276088989493,
+        "wall_seconds": 400.5
+      },
+      {
+        "run_id": "branched_projection__W20__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/branched_projection/W20/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 36,
+        "train_seconds": 617.3,
+        "best_epoch": 26,
+        "test_subset": 0.6306844291227933,
+        "wall_seconds": 620.2
+      },
+      {
+        "run_id": "branched_projection__W20__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/branched_projection/W20/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 14,
+        "train_seconds": 236.9,
+        "best_epoch": 4,
+        "test_subset": 0.6221641592183036,
+        "wall_seconds": 239.9
+      },
+      {
+        "run_id": "branched_projection__W20__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/branched_projection/W20/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 25,
+        "train_seconds": 511.9,
+        "best_epoch": 15,
+        "test_subset": 0.6473759737693427,
+        "wall_seconds": 514.9
+      },
+      {
+        "run_id": "branched_projection__W20__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/branched_projection/W20/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 28,
+        "train_seconds": 479.2,
+        "best_epoch": 18,
+        "test_subset": 0.6307626513103805,
+        "wall_seconds": 482.1
+      },
+      {
+        "run_id": "branched_projection__W20__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/branched_projection/W20/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 25,
+        "train_seconds": 428.7,
+        "best_epoch": 15,
+        "test_subset": 0.6395487755880799,
+        "wall_seconds": 431.6
+      },
+      {
+        "run_id": "unified_reference_delta__W5__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W5/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 23,
+        "train_seconds": 287.4,
+        "best_epoch": 13,
+        "test_subset": 0.6610669182436134,
+        "wall_seconds": 289.5
+      },
+      {
+        "run_id": "unified_reference_delta__W5__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W5/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 45,
+        "train_seconds": 566.4,
+        "best_epoch": 35,
+        "test_subset": 0.6545184322767781,
+        "wall_seconds": 568.4
+      },
+      {
+        "run_id": "unified_reference_delta__W5__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W5/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 42,
+        "train_seconds": 526.2,
+        "best_epoch": 32,
+        "test_subset": 0.644190364493013,
+        "wall_seconds": 528.4
+      },
+      {
+        "run_id": "unified_reference_delta__W5__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W5/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 54,
+        "train_seconds": 680.2,
+        "best_epoch": 44,
+        "test_subset": 0.6316961735144606,
+        "wall_seconds": 682.4
+      },
+      {
+        "run_id": "unified_reference_delta__W5__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W5/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 21,
+        "train_seconds": 262.1,
+        "best_epoch": 11,
+        "test_subset": 0.6518372619004988,
+        "wall_seconds": 264.2
+      },
+      {
+        "run_id": "unified_reference_delta__W10__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W10/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 65,
+        "train_seconds": 1159.6,
+        "best_epoch": 55,
+        "test_subset": 0.6894512994839175,
+        "wall_seconds": 1162.8
+      },
+      {
+        "run_id": "unified_reference_delta__W10__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W10/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 33,
+        "train_seconds": 589.5,
+        "best_epoch": 23,
+        "test_subset": 0.7007242270675649,
+        "wall_seconds": 592.6
+      },
+      {
+        "run_id": "unified_reference_delta__W10__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W10/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 62,
+        "train_seconds": 1105.2,
+        "best_epoch": 52,
+        "test_subset": 0.6918972207022039,
+        "wall_seconds": 1108.2
+      },
+      {
+        "run_id": "unified_reference_delta__W10__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W10/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 66,
+        "train_seconds": 1178.7,
+        "best_epoch": 56,
+        "test_subset": 0.6962544017117501,
+        "wall_seconds": 1181.9
+      },
+      {
+        "run_id": "unified_reference_delta__W10__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W10/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 42,
+        "train_seconds": 746.6,
+        "best_epoch": 32,
+        "test_subset": 0.699451892081467,
+        "wall_seconds": 749.7
+      },
+      {
+        "run_id": "unified_reference_delta__W20__shipped_split__seed42",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W20/shipped_split/seed42",
+        "stop_reason": "patience",
+        "n_epochs": 19,
+        "train_seconds": 322.5,
+        "best_epoch": 9,
+        "test_subset": 0.6405313158778605,
+        "wall_seconds": 325.5
+      },
+      {
+        "run_id": "unified_reference_delta__W20__shipped_split__seed43",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W20/shipped_split/seed43",
+        "stop_reason": "patience",
+        "n_epochs": 33,
+        "train_seconds": 557.7,
+        "best_epoch": 23,
+        "test_subset": 0.6889918284405108,
+        "wall_seconds": 560.6
+      },
+      {
+        "run_id": "unified_reference_delta__W20__shipped_split__seed44",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W20/shipped_split/seed44",
+        "stop_reason": "patience",
+        "n_epochs": 95,
+        "train_seconds": 1607.0,
+        "best_epoch": 85,
+        "test_subset": 0.65849354132274,
+        "wall_seconds": 1610.2
+      },
+      {
+        "run_id": "unified_reference_delta__W20__shipped_split__seed45",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W20/shipped_split/seed45",
+        "stop_reason": "patience",
+        "n_epochs": 19,
+        "train_seconds": 320.7,
+        "best_epoch": 9,
+        "test_subset": 0.648705529130271,
+        "wall_seconds": 323.7
+      },
+      {
+        "run_id": "unified_reference_delta__W20__shipped_split__seed46",
+        "out_dir": "runs/stage1_v2/unified_reference_delta/W20/shipped_split/seed46",
+        "stop_reason": "patience",
+        "n_epochs": 24,
+        "train_seconds": 402.6,
+        "best_epoch": 14,
+        "test_subset": 0.6439350098841734,
+        "wall_seconds": 405.5
+      }
+    ],
+    "failed_runs": [],
+    "legacy_reuse_decision": {
+      "paired_delta_W5_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/paired_delta/W5/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "paired_delta_W10_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/paired_delta/W10/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "paired_delta_W20_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/paired_delta/W20/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "branched_projection_W5_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/branched_projection/W5/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "branched_projection_W10_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/branched_projection/W10/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "branched_projection_W20_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/branched_projection/W20/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "unified_reference_delta_W5_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/unified_reference_delta/W5/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "unified_reference_delta_W10_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/unified_reference_delta/W10/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      },
+      "unified_reference_delta_W20_seed42": {
+        "reusable": false,
+        "path": "runs/stage1/unified_reference_delta/W20/shipped_split/seed42",
+        "reasons": [
+          "legacy history entries are missing required fields: ['best_epoch_so_far', 'best_score_so_far', 'lr', 'monitor_metric', 'patience_counter', 'val_by_group_n']",
+          "legacy run predates engine.py's seeding fix -- its DataLoader shuffle order was drawn from whatever the ambient global torch RNG state was (see set_all_seeds' docstring), not from --seed, so it is not a reproducible/comparable sample for this seed-variance sweep"
+        ]
+      }
+    },
+    "sweep_wall_seconds": 25469.6
+  }
+}
