@@ -1,0 +1,3 @@
+# 데이터는 올리지 않는다 (SGE 데이터 엠바고)
+data/
+.pytest_cache/
