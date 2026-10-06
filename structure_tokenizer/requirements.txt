@@ -1,0 +1,5 @@
+numpy
+pandas
+torch
+biotite      # build_dataset.py 에서 구조 값 계산
+pytest
