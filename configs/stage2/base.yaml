@@ -1,0 +1,19 @@
+# Stage 2 shared settings. Mirrors Stage 1 where a Stage 1 setting exists
+# (Huber, batch size, lr, weight decay, monitor, patience, max epochs).
+# query_mode is chosen on the command line (single_query | nine_query).
+# lambda_sp / unfreeze only matter for train_mode=joint_l2sp (not run by default).
+
+lr: 1.0e-4
+weight_decay: 0.01
+batch_size: 32
+huber_delta: 1.0
+grad_clip: 1.0
+select_on: subset          # missense+indel mean Spearman on validation, same as Stage 1
+min_delta: 0.0
+patience: 10
+max_epochs: 120
+
+# joint_l2sp only (not run by default)
+stage1_lr_ratio: 0.1       # Stage 1 lr = lr * ratio
+lambda_sp: 0.0             # reduction='sum' over unfrozen Stage 1 parameters; untuned
+unfreeze: [pooling, head]  # submodules of Stage1Model that may update in joint mode
