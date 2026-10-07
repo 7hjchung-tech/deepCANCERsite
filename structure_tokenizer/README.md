@@ -1,7 +1,7 @@
 # structure_tokenizer — RAD51C 구조 토크나이저 (Qk)
 
 담당: 조승원. 변이 위치의 구조 값 9개를 Stage 2 가 읽을 토큰 9개로 바꾼다.
-검증 실험(E0–E8)의 코드와 보고서는 이후에 따로 올린다.
+이 토크나이저를 고르고 검증한 실험은 [`experiments/`](experiments/README.md)에 있다.
 
 > 데이터 주의: SGE 데이터는 엠바고 상태다(`README_P1.md`). 데이터 파일은 올리지 않고(`.gitignore`),
 > `build_dataset.py`로 레포 안의 입력에서 만든다.

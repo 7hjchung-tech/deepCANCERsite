@@ -1,0 +1,6 @@
+# 실험 산출물·외부 입력·묶음 데이터는 올리지 않는다 (데이터 엠바고, 용량)
+results/
+external/
+data/
+.pytest_cache/
+*.db
