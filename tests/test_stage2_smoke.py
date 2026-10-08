@@ -181,10 +181,18 @@ def test_joint_l2sp_zero_at_reference_positive_after_perturbation_and_gradients_
     named = unfreeze_stage1(handle, ["pooling", "head"])
     ref = {n: p.detach().clone() for n, p in named}
     assert float(l2sp_penalty(named, ref)) == 0.0
+    assert float(l2sp_penalty(named, ref, reduction="mean")) == 0.0
     with torch.no_grad():
         for _, p in named:
             p.add_(0.01)
-    assert float(l2sp_penalty(named, ref)) > 0.0
+    sum_pen = float(l2sp_penalty(named, ref, reduction="sum"))
+    mean_pen = float(l2sp_penalty(named, ref, reduction="mean"))
+    n_total = sum(p.numel() for _, p in named)
+    assert sum_pen > 0.0
+    assert abs(mean_pen - sum_pen / n_total) < 1e-9       # mean == sum / total element count
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        l2sp_penalty(named, ref, reduction="bogus")
     frozen_names = [n for n, p in model.named_parameters() if not p.requires_grad]
     assert len(frozen_names) > 0 and all(n.startswith(("content_builder", "layer_embedding", "metadata_encoder"))
                                          for n in frozen_names)
@@ -227,6 +235,39 @@ def test_structure_store_rejects_bad_tables_and_aligns_by_id(tmp_path):
     good.to_csv(p5, index=False)
     with pytest.raises(ValueError, match="split disagrees"):
         load_structure_store(p5, ["v1", "v2", "v3"], {"v1": "val", "v2": "train", "v3": "train"})
+
+
+def test_fixed_structure_store_returns_train_median_mode_for_every_id(tmp_path):
+    from src.stage2.structure import make_fixed_structure_store
+
+    cols = ["var_id", "split", "A_plddt", "A_rsasa", "A_dist_walker_a", "A_dist_walker_b", "A_dist_atp_contact",
+            "A_dist_ssdna_binding", "A_dist_bcdx2_interface", "A_dist_cx3_interface",
+            "A_ss_helix", "A_ss_sheet", "A_ss_loop"]
+    # train plddt: 10,20,30 -> median 20; train ss: helix,helix,sheet -> mode helix (code 0)
+    rows = [
+        ["v1", "train", 10.0, 0.1, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        ["v2", "train", 20.0, 0.2, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        ["v3", "train", 30.0, 0.3, 1, 1, 1, 1, 1, 1, 0, 1, 0],
+        ["v4", "val", 999.0, 0.9, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    ]
+    df = pd.DataFrame(rows, columns=cols)
+    p = tmp_path / "t.csv"
+    df.to_csv(p, index=False)
+    split = {"v1": "train", "v2": "train", "v3": "train", "v4": "val"}
+    base = load_structure_store(p, ["v1", "v2", "v3", "v4"], split)
+    train_ids = ["v1", "v2", "v3"]
+    fixed = make_fixed_structure_store(base, train_ids)
+
+    # same constant row for train AND val ids, any order, any count
+    for ids in (["v4"], ["v1", "v3"], ["v2", "v4", "v1"]):
+        raw = fixed.raw(ids)
+        assert raw["continuous"].shape == (len(ids), 8)
+        assert torch.allclose(raw["continuous"][0], raw["continuous"][-1])
+        assert raw["continuous"][0, 0].item() == pytest.approx(20.0)     # train median plddt
+        assert (raw["ss"] == 0).all()                                    # train mode = helix
+
+    # the real (non-fixed) store is unaffected and still per-sample
+    assert base.raw(["v4"])["continuous"][0, 0].item() == pytest.approx(999.0)
 
 
 def test_missing_tokenizer_fails_with_clear_error():

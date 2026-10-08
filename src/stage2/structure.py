@@ -160,3 +160,36 @@ class QkTokenizerAdapter(StructureTokenizer):
 
 def make_qk_tokenizer(cfg: dict) -> QkTokenizerAdapter:
     return QkTokenizerAdapter(d_s=int(cfg.get("d_s", STRUCT_TOKEN_DIM)), n_bins=int(cfg.get("n_bins", 4)))
+
+
+class FixedStructureStore(StructureStore):
+    """Same interface as StructureStore, but .raw(ids) ignores `ids` and returns the TRAIN-only
+    per-feature median (continuous) / mode (secondary structure) for every row, tiled to len(ids).
+
+    Used for the "fixed structure" ablation arm: every sample sees the identical structure
+    value, so only field identity (the tokenizer's field_emb, unaffected by this class) and
+    variant type (passed separately as type_id, also unaffected) remain informative.
+
+    The tokenizer's PLE bin edges must still be fit on the REAL per-sample train distribution
+    (constant-valued input has only one quantile and fit_qk_bins would reject it) -- callers
+    fit the tokenizer against the underlying real StructureStore and only swap in a
+    FixedStructureStore for the batch-time raw() calls (see make_fixed_structure_store).
+    """
+
+    def __init__(self, base: StructureStore, train_ids: list[str]):
+        super().__init__(base.var_ids, base.continuous, base.ss, base.splits)
+        idx = np.array([self._index[v] for v in train_ids], dtype=np.int64)
+        self._const_continuous = np.median(self.continuous[idx], axis=0).astype(np.float32)
+        counts = np.bincount(self.ss[idx], minlength=int(self.ss.max()) + 1)
+        self._const_ss = int(np.argmax(counts))
+
+    def raw(self, ids: list[str]) -> dict:
+        n = len(ids)
+        return {
+            "continuous": torch.as_tensor(np.tile(self._const_continuous, (n, 1))),
+            "ss": torch.as_tensor(np.full(n, self._const_ss, dtype=np.int64)),
+        }
+
+
+def make_fixed_structure_store(base: StructureStore, train_ids: list[str]) -> FixedStructureStore:
+    return FixedStructureStore(base, train_ids)

@@ -1,0 +1,24 @@
+{
+  "best": {
+    "epoch": 2,
+    "delta_abs_mean_normal": 0.15958821773529053,
+    "val_subset_normal": 0.7667933696290447,
+    "val_subset_permuted": 0.7667846938899625,
+    "val_subset_donor_swap": 0.7667203349459555,
+    "permutation_invariance_max_abs_diff": 4.76837158203125e-07,
+    "permutation_invariance_mean_abs_diff": 6.960076959217076e-09,
+    "donor_swap_mean_abs_pred_change": 0.072727732360363,
+    "donor_swap_max_abs_pred_change": 0.21189439296722412
+  },
+  "last": {
+    "epoch": 12,
+    "delta_abs_mean_normal": 0.41663405299186707,
+    "val_subset_normal": 0.7563013151320235,
+    "val_subset_permuted": 0.7562920311104081,
+    "val_subset_donor_swap": 0.7602846928979916,
+    "permutation_invariance_max_abs_diff": 9.5367431640625e-07,
+    "permutation_invariance_mean_abs_diff": 2.7926992274274198e-08,
+    "donor_swap_mean_abs_pred_change": 0.2626514136791229,
+    "donor_swap_max_abs_pred_change": 1.0000669956207275
+  }
+}

@@ -1,0 +1,12 @@
+# 3D-neighborhood FiLM model (E1/E2). Optimizer/batch/epoch-budget settings reused as-is from
+# configs/stage2/base.yaml (R1's validated settings) -- recorded here explicitly per the task spec.
+lr: 1.0e-4
+weight_decay: 0.01
+batch_size: 32
+huber_delta: 1.0
+grad_clip: 1.0
+min_delta: 0.0
+patience: 10
+max_epochs: 120
+d_s: 32          # residue token dim
+n_bins: 4        # Q-PLE bins for the non-pLDDT continuous fields (same as the existing tokenizer)

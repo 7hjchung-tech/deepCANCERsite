@@ -1,0 +1,6 @@
+model,params,best_epoch,val_subset_best,val_subset_ep11_or_last,entropy_ep1_mean,entropy_last_mean,delta_abs_mean_ep1,delta_abs_mean_last
+forward single (tau0.1),21346,1,0.7663,0.7427,3.038,3.04,0.0709,0.5011
+forward nine (tau0.1),21346,1,0.7663,0.7427,3.038,3.045,0.0712,0.5015
+R0 struct mean,25441,1,0.7663,0.7403,,,0.073,0.4886
+"R1 seq-query (1 head, d_a=32)",30625,1,0.7663,0.7493,2.194,1.969,0.0695,0.5535
+R2 multi-head (4x16) + learnable tau,42018,1,0.7662,0.7501,1.895,1.297,0.0852,0.6182

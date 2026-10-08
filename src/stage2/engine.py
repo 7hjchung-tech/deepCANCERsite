@@ -33,19 +33,28 @@ def variant_type_id(edit) -> int:
     return VARIANT_TYPE_ID[group_of(edit.edit_type)]
 
 
-def make_collate(model_mode: str, store: StructureStore):
+def make_collate(model_mode: str, store: StructureStore, y1_override: dict | None = None):
     def _collate(items: list[dict]) -> dict:
         batch = stage1_collate(items, model_mode)
         batch["struct_raw"] = store.raw(batch["var_id"])
         batch["type_id"] = torch.tensor([variant_type_id(it["edit"]) for it in items], dtype=torch.long)
+        if y1_override is not None:
+            # NaN = keep the frozen Stage 1 prediction for that row
+            batch["y1_override"] = torch.tensor([y1_override.get(v, float("nan")) for v in batch["var_id"]],
+                                                dtype=torch.float32)
         return batch
     return _collate
 
 
 def make_loader(entries: list[dict], cache, window: int, layers: list[int], handle: Stage1Handle,
-                store: StructureStore, model_mode: str, batch_size: int, shuffle: bool) -> DataLoader:
+                store: StructureStore, model_mode: str, batch_size: int, shuffle: bool,
+                y1_override: dict | None = None) -> DataLoader:
+    """y1_override: optional var_id -> y1 (label units), e.g. out-of-fold Stage 1 predictions
+    for train rows. Only the residual base y1 is replaced; K/V/valid still come from the
+    frozen Stage 1 checkpoint. None (default) leaves the behaviour unchanged."""
     ds = Stage1Dataset(entries, cache, window, layers, meta_scaler=handle.meta_scaler)
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, collate_fn=make_collate(model_mode, store))
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
+                      collate_fn=make_collate(model_mode, store, y1_override))
 
 
 def _move(d: dict, device: str) -> dict:
@@ -55,6 +64,9 @@ def _move(d: dict, device: str) -> dict:
 def forward_batch(stage2: Stage2Model, tokenizer: StructureTokenizer, handle: Stage1Handle,
                   batch: dict, device: str, grad: bool) -> tuple[dict, dict]:
     s1 = stage1_outputs(handle, batch, grad=grad)
+    if "y1_override" in batch:
+        ov = batch["y1_override"].to(s1["y1"].device)
+        s1["y1"] = torch.where(torch.isnan(ov), s1["y1"], ov)
     S = tokenizer(_move(batch["struct_raw"], device))
     out = stage2(S, s1["K"], s1["V"], s1["valid"], batch["type_id"].to(device), s1["y1"])
     return out, s1
@@ -133,11 +145,20 @@ def unfreeze_stage1(handle: Stage1Handle, modules: list[str]) -> list[tuple[str,
     return named
 
 
-def l2sp_penalty(named: list[tuple[str, nn.Parameter]], ref: dict[str, torch.Tensor]) -> torch.Tensor:
-    """R_SP with reduction='sum': sum over unfrozen Stage 1 parameters of ||theta - theta_ref||^2."""
+def l2sp_penalty(named: list[tuple[str, nn.Parameter]], ref: dict[str, torch.Tensor],
+                 reduction: str = "sum") -> torch.Tensor:
+    """R_SP over unfrozen Stage 1 parameters: sum_i ||theta_i - theta_ref_i||^2 (reduction='sum',
+    the README_STAGE2 default) or that same sum divided by the total element count
+    (reduction='mean', i.e. mean((theta-theta_ref)**2) pooled over every unfrozen parameter)."""
+    if reduction not in ("sum", "mean"):
+        raise ValueError(f"reduction must be 'sum' or 'mean', got {reduction!r}")
     total = torch.zeros((), device=named[0][1].device) if named else torch.zeros(())
+    n = 0
     for name, p in named:
         total = total + (p - ref[name]).pow(2).sum()
+        n += p.numel()
+    if reduction == "mean" and n > 0:
+        total = total / n
     return total
 
 
@@ -145,6 +166,7 @@ def train_stage2(
     *, stage2: Stage2Model, tokenizer: StructureTokenizer, handle: Stage1Handle,
     loaders: dict[str, DataLoader], store: StructureStore, cfg: dict, device: str, out_dir: Path,
     seed: int, train_mode: str, unfreeze: list[str] | None = None, init_state: dict | None = None,
+    evaluate_test: bool = True,
 ) -> dict:
     """frozen_stage1: only Stage 2 + tokenizer train.
     joint_l2sp: additionally the chosen Stage 1 submodules, with a lower lr and an L2-SP anchor.
@@ -170,20 +192,23 @@ def train_stage2(
     optimizer = torch.optim.AdamW(param_groups, weight_decay=float(cfg["weight_decay"]))
     loss_fn = nn.HuberLoss(delta=float(cfg["huber_delta"]))
     lam = float(cfg.get("lambda_sp", 0.0)) if train_mode == "joint_l2sp" else 0.0
+    lam_reduction = cfg.get("lambda_sp_reduction", "sum")
 
-    history, best, best_state, stop_reason = [], {"score": float("-inf"), "epoch": -1}, None, "max_epochs"
+    history, best, best_state, last_state, stop_reason = [], {"score": float("-inf"), "epoch": -1}, None, None, "max_epochs"
     for epoch in range(1, int(cfg["max_epochs"]) + 1):
         stage2.train()
         tokenizer.train()
         t0 = time.time()
-        task_sum, pen_sum, n = 0.0, 0.0, 0
+        task_sum, pen_sum, s1_grad_sum, n = 0.0, 0.0, 0.0, 0
         for batch in loaders["train"]:
             out, _ = forward_batch(stage2, tokenizer, handle, batch, device, grad=(train_mode == "joint_l2sp"))
             task = loss_fn(out["pred"], batch["label"].to(device))
-            pen = l2sp_penalty(named_s1, ref) if named_s1 else torch.zeros((), device=device)
+            pen = l2sp_penalty(named_s1, ref, reduction=lam_reduction) if named_s1 else torch.zeros((), device=device)
             loss = task + lam * pen
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
+            # unclipped Stage 1 gradient norm, read before the real (all-params) clip below
+            s1_grad_sum += float(torch.nn.utils.clip_grad_norm_([p for _, p in named_s1], float("inf"))) if named_s1 else 0.0
             torch.nn.utils.clip_grad_norm_(
                 [p for g in param_groups for p in g["params"] if p.requires_grad], float(cfg["grad_clip"]))
             optimizer.step()
@@ -191,6 +216,10 @@ def train_stage2(
             pen_sum += float(pen.detach())
             n += 1
         seconds = round(time.time() - t0, 1)
+        last_state = {
+            "stage2": copy.deepcopy(stage2.state_dict()), "tokenizer": copy.deepcopy(tokenizer.state_dict()),
+            "stage1_unfrozen": {n_: p.detach().clone() for n_, p in named_s1},
+        }
         val = evaluate(stage2, tokenizer, handle, loaders["val"], device)
         score = _select_monitor(val["stage2"])
         improved = score > best["score"] + float(cfg["min_delta"])
@@ -204,7 +233,9 @@ def train_stage2(
         patience_counter = epoch - best["epoch"]
         history.append({
             "epoch": epoch, "train_task_loss": task_sum / max(n, 1),
-            "train_l2sp_penalty": pen_sum / max(n, 1), "lambda_sp": lam,
+            "train_l2sp_penalty": pen_sum / max(n, 1), "lambda_sp": lam, "lambda_sp_reduction": lam_reduction,
+            "train_stage1_grad_norm_mean": s1_grad_sum / max(n, 1) if named_s1 else None,
+            "stage1_lr": optimizer.param_groups[1]["lr"] if len(optimizer.param_groups) > 1 else None,
             "val_stage2_subset": score, "val_stage2_spearman": val["stage2"]["spearman"],
             "val_stage2_rmse": val["stage2"]["rmse"], "val_stage2_mae": val["stage2"]["mae"],
             "val_stage1_subset": val["stage1"]["subset"], "val_stage1_spearman": val["stage1"]["spearman"],
@@ -227,6 +258,7 @@ def train_stage2(
     tokenizer.load_state_dict(best_state["tokenizer"])
     for n_, p in named_s1:
         p.data.copy_(best_state["stage1_unfrozen"][n_])
-    test = evaluate(stage2, tokenizer, handle, loaders["test"], device)
+    test = evaluate(stage2, tokenizer, handle, loaders["test"], device) if evaluate_test else None
     return {"history": history, "best": best, "stop_reason": stop_reason,
-            "best_state": best_state, "test": test, "stage1_named": named_s1, "ref": ref}
+            "best_state": best_state, "last_state": last_state, "test": test,
+            "stage1_named": named_s1, "ref": ref}

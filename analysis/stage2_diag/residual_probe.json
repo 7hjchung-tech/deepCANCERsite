@@ -1,0 +1,40 @@
+{
+  "a_train_to_val::type_only": {
+    "pearson": -0.020421221598477146,
+    "spearman": 0.04418997301739431,
+    "within_type_spearman": {
+      "missense": NaN,
+      "indel": NaN
+    },
+    "alpha": 177.82794100389228,
+    "mse_val": 14.465831588519569,
+    "mse_val_zero": 13.86404449339842
+  },
+  "b_val_crossfit::type_only": {
+    "pearson": -0.13544994372738228,
+    "spearman": -0.1535696666233948,
+    "within_type_spearman": {
+      "missense": -0.16636722808493748,
+      "indel": 0.19810260587431847
+    }
+  },
+  "a_train_to_val::structure+type": {
+    "pearson": -0.09176919293913145,
+    "spearman": -0.017644519305834053,
+    "within_type_spearman": {
+      "missense": -0.08049322961262656,
+      "indel": 0.1442475988507545
+    },
+    "alpha": 100.0,
+    "mse_val": 15.04419749756715,
+    "mse_val_zero": 13.86404449339842
+  },
+  "b_val_crossfit::structure+type": {
+    "pearson": 0.14765266588361536,
+    "spearman": 0.1022174177676008,
+    "within_type_spearman": {
+      "missense": 0.14297263026486193,
+      "indel": -0.124906618883973
+    }
+  }
+}

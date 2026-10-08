@@ -60,7 +60,9 @@ def stage1_outputs(handle: Stage1Handle, batch: dict, grad: bool) -> dict:
     with torch.set_grad_enabled(grad):
         out = handle.model(batch, return_extras=True)
         y1 = out["pred"] * handle.y_std + handle.y_mean
-    return {"y1": y1, "K": out["K"], "V": out["V"], "valid": out["attention_valid"]}
+    # z_seq is exactly what SequenceHead received (Stage1Model.forward always returns it,
+    # extras or not) -- the pooled hidden the neighborhood-FiLM model conditions on (h_base).
+    return {"y1": y1, "K": out["K"], "V": out["V"], "valid": out["attention_valid"], "h_base": out["z_seq"]}
 
 
 def read_reference(ckpt_path: str) -> dict:
