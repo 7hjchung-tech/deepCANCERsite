@@ -21,7 +21,9 @@ from src.stage2.attention import masked_cosine_attention  # noqa: E402
 from src.stage2.engine import l2sp_penalty, unfreeze_stage1  # noqa: E402
 from src.stage2.model import Stage2Model  # noqa: E402
 from src.stage2.stage1_adapter import Stage1Handle, stage1_outputs  # noqa: E402
-from src.stage2.structure import StructureTokenizerMissing, load_structure_store, load_tokenizer  # noqa: E402
+from src.stage2.structure import (  # noqa: E402
+    QkTokenizerAdapter, StructureTokenizerMissing, load_structure_store, load_tokenizer, make_qk_tokenizer,
+)
 from src.stage2.synthetic import SyntheticSmokeTokenizer  # noqa: E402
 from src.stage1.dataset import Stage1Dataset, stage1_collate  # noqa: E402
 from src.stage1.synthetic import make_synthetic_fixture  # noqa: E402
@@ -232,3 +234,14 @@ def test_missing_tokenizer_fails_with_clear_error():
         load_tokenizer(None, {})
     with pytest.raises(StructureTokenizerMissing, match="was not found"):
         load_tokenizer("not_a_real_module_xyz:make", {})
+
+
+def test_qk_adapter_requires_fit_and_outputs_nine_tokens():
+    tok = make_qk_tokenizer({})
+    raw = {"continuous": torch.rand(20, 8) * 80, "ss": torch.randint(0, 3, (20,))}
+    with pytest.raises(RuntimeError, match="fit_preprocessing"):
+        tok(raw)
+    tok.fit_preprocessing(raw)
+    S = tok(raw)
+    assert S.shape == (20, 9, 32) and torch.isfinite(S).all()
+    assert isinstance(tok, QkTokenizerAdapter)

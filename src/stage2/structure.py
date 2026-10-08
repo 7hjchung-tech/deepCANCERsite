@@ -131,3 +131,32 @@ def load_structure_store(table_path: str | Path, cohort_var_ids: list[str],
         ss_code,
         splits,
     )
+
+
+class QkTokenizerAdapter(StructureTokenizer):
+    """Wraps structure_tokenizer/tokenizer.py (Qk: PLE + FT-Transformer tokens) without modifying it.
+
+    The inner module's bin edges are estimated from data, so it is created inside
+    fit_preprocessing(train_raw) using TRAIN rows only; forward() before that is an error.
+    """
+
+    def __init__(self, d_s: int = STRUCT_TOKEN_DIM, n_bins: int = 4) -> None:
+        super().__init__()
+        self.d_s = d_s
+        self.n_bins = n_bins
+        self.inner = None
+
+    def fit_preprocessing(self, train_raw: dict) -> None:
+        from structure_tokenizer.tokenizer import StructureTokenizer as QkModule, fit_qk_bins
+
+        cont = train_raw["continuous"].detach().cpu().numpy()
+        self.inner = QkModule(fit_qk_bins(cont, self.n_bins), self.d_s)
+
+    def forward(self, raw: dict) -> torch.Tensor:
+        if self.inner is None:
+            raise RuntimeError("QkTokenizerAdapter.fit_preprocessing(train_raw) must run before forward")
+        return self.inner(raw["continuous"], raw["ss"])
+
+
+def make_qk_tokenizer(cfg: dict) -> QkTokenizerAdapter:
+    return QkTokenizerAdapter(d_s=int(cfg.get("d_s", STRUCT_TOKEN_DIM)), n_bins=int(cfg.get("n_bins", 4)))

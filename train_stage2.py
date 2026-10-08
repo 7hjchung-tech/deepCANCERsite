@@ -47,7 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--train-mode", choices=TRAIN_MODES, default="frozen_stage1")
     ap.add_argument("--stage1-ckpt", required=True, help="explicit Stage 1 best.pt path (no automatic selection)")
     ap.add_argument("--init-stage2-ckpt", default=None, help="joint_l2sp only: frozen_stage1 Stage 2 checkpoint")
-    ap.add_argument("--tokenizer", default=None, help="module:factory returning a StructureTokenizer")
+    ap.add_argument("--tokenizer", default="src.stage2.structure:make_qk_tokenizer",
+                    help="module:factory returning a StructureTokenizer (default: Qk tokenizer)")
     ap.add_argument("--synthetic-tokenizer", action="store_true", help="SMOKE TEST ONLY")
     ap.add_argument("--structure-table", default="data/structure/results/rad51c_struct_features.csv")
     ap.add_argument("--manifest", default="data/split_manifest.csv")
@@ -116,7 +117,7 @@ def main() -> None:
     device = args.device
     set_all_seeds(args.seed)
     tokenizer.fit_preprocessing(store.raw([e["var_id"] for e in by_split["train"]]))
-    stage2 = Stage2Model(args.query_mode)
+    stage2 = Stage2Model(args.query_mode, tau_init=cfg.get("tau_init"))
     print(f"[stage2] stage2 trainable params (head modules): {stage2.num_trainable_params():,}")
 
     init_state = None

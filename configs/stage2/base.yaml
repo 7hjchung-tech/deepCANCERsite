@@ -3,6 +3,7 @@
 # query_mode is chosen on the command line (single_query | nine_query).
 # lambda_sp / unfreeze only matter for train_mode=joint_l2sp (not run by default).
 
+tau_init: 0.1              # initial attention temperature (learnable). Was implicitly ~0.69 (log_tau=0)
 lr: 1.0e-4
 weight_decay: 0.01
 batch_size: 32

@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from src.stage1.schema import MODEL_UNIFIED_REFERENCE_DELTA
 
+# Token order follows structure_tokenizer/tokenizer.py FIELD_ORDER (source of truth).
 STRUCT_TOKEN_NAMES = (
     "plddt",
+    "secondary_structure",
     "rsasa",
     "dist_walker_a",
     "dist_walker_b",
@@ -18,7 +20,6 @@ STRUCT_TOKEN_NAMES = (
     "dist_ssdna_binding",
     "dist_bcdx2_interface",
     "dist_cx3_interface",
-    "secondary_structure",
 )
 N_STRUCT_TOKENS = len(STRUCT_TOKEN_NAMES)
 STRUCT_TOKEN_DIM = 32

@@ -13,6 +13,8 @@ with c = mean_j(U_j) + e_type, U_j = A(S_j), A shared across the 9 tokens.
 
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,7 +26,7 @@ from .schema import N_STRUCT_TOKENS, QUERY_MODES, STRUCT_TOKEN_DIM, VARIANT_TYPE
 
 class Stage2Model(nn.Module):
     def __init__(self, query_mode: str, d: int = 128, struct_dim: int = STRUCT_TOKEN_DIM,
-                 film_hidden: int = 32, head_hidden: int = 32) -> None:
+                 film_hidden: int = 32, head_hidden: int = 32, tau_init: float | None = None) -> None:
         super().__init__()
         if query_mode not in QUERY_MODES:
             raise ValueError(f"query_mode must be one of {QUERY_MODES}, got {query_mode!r}")
@@ -32,7 +34,10 @@ class Stage2Model(nn.Module):
         self.d = d
         self.adapter = nn.Linear(struct_dim, d)                      # shared affine A: 32 -> d
         self.type_emb = nn.Embedding(len(VARIANT_TYPES), d)          # e_type
-        self.log_tau = nn.Parameter(torch.zeros(()))                 # tau = softplus(log_tau) + 1e-4 (same as Stage 1)
+        # tau = softplus(log_tau) + 1e-4 (same as Stage 1). tau_init=None keeps log_tau=0 (tau ~= 0.69).
+        # Otherwise log_tau is set so that tau starts at tau_init (inverse softplus).
+        init_log_tau = 0.0 if tau_init is None else math.log(math.expm1(tau_init - 1e-4))
+        self.log_tau = nn.Parameter(torch.tensor(init_log_tau))
         self.film = nn.Sequential(                                   # FiLMGenerator(c): d -> 32 -> 2d
             nn.Linear(d, film_hidden), nn.GELU(), nn.Linear(film_hidden, 2 * d),
         )
